@@ -1,4 +1,14 @@
-
+dnspython==2.7.0
+googleapis-common-protos==1.66.0
+grpclib==0.4.7
+h2==4.1.0
+hpack==4.0.0
+hyperframe==6.0.1
+multidict==6.1.0
+numpy==2.2.0
+opencv-python==4.10.0.84
+pillow==11.0.0
+protobuf==5.28.2
+pymongo==4.10.1
+typing_extensions==4.12.2
 viam-sdk==0.36.0
-
-typing-extensions
