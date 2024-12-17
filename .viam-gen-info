@@ -1,0 +1,12 @@
+{
+  "module_name": "sealant-check",
+  "namespace": "hpe-automotive",
+  "language": "python",
+  "resource_type": "service",
+  "resource_subtype": "vision",
+  "model_name": "sealant",
+  "enable_cloud_build": false,
+  "initialize_git": false,
+  "generator_version": "0.1.0",
+  "generated_on": "2024-12-17T11:20:21.551724Z"
+}

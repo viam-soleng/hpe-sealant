@@ -1,0 +1,15 @@
+{
+  "$schema": "https://dl.viam.dev/module.schema.json",
+  "module_id": "hpe-automotive:sealant-check",
+  "visibility": "private",
+  "url": "https://github.com/viam-soleng/hpe-sealant",
+  "description": "Modular vision service: sealant",
+  "models": [
+    {
+      "api": "rdk:service:vision",
+      "model": "9e53a781-2baf-4cdf-bce0-fc70db24a018:sealant-check:sealant"
+    }
+  ],
+  "entrypoint": "./run.sh",
+  "first_run": ""
+}
