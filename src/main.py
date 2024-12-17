@@ -159,6 +159,8 @@ class Sealant(Vision, EasyResource):
         # Convert RGB to BGR (OpenCV uses BGR by default)
         if np_image.ndim == 3 and np_image.shape[2] == 3:
             np_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
+        # Create a copy of the image to draw the contours on
+        result_image = np_image.copy()
         # Convert the NumPy array to a grayscale image
         gray_image = cv2.cvtColor(np_image, cv2.COLOR_BGR2GRAY)
         # Threshold the image to create a binary image (black and white)
@@ -166,15 +168,32 @@ class Sealant(Vision, EasyResource):
         cv2.imwrite("bw_image.jpg", bw_image)
         wb_image = cv2.bitwise_not(bw_image)
         cv2.imwrite("wb_image.jpg", wb_image)
+        # Find contours in the binary image
+        contours, _ = cv2.findContours(wb_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        # Display the contours on top of the color image
+        # cv2.drawContours(result_image, contours, -1, (0, 255, 0), 3)
+        # Filter contours by area size (To be tweaked based upon the ideal shape)
+        img_contours_filtered = []
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if (
+                area < result_image.shape[0] * result_image.shape[1] * 0.4
+                and area > result_image.shape[0] * result_image.shape[1] * 0.15
+            ):
+                # Keep only contours within a certain range
+                img_contours_filtered.append(contour)
+        self.logger.info(f"Number of contours: {len(img_contours_filtered)}")
+        # Display the filtered contours on top of the color image
+        cv2.drawContours(result_image, img_contours_filtered, -1, (0, 255, 0), 3)
         # Convert the NumPy array back to a PIL image
-        pil_image = matlike_to_pil(wb_image)
+        pil_image = matlike_to_pil(result_image)
         # Convert the PIL image to a ViamImage
         result_image = pil_to_viam_image(pil_image, CameraMimeType.JPEG)
         return result_image
 
 
 def matlike_to_pil(np_image: np.ndarray) -> Image.Image:
-    np_image = cv2.cvtColor(np_image, cv2.COLOR_GRAY2RGB)
+    # np_image = cv2.cvtColor(np_image, cv2.COLOR_GRAY2RGB)
     # Convert BGR to RGB (OpenCV uses BGR by default)
     if np_image.ndim == 3 and np_image.shape[2] == 3:
         np_image = cv2.cvtColor(np_image, cv2.COLOR_BGR2RGB)
