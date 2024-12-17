@@ -7,7 +7,7 @@
   "models": [
     {
       "api": "rdk:service:vision",
-      "model": "9e53a781-2baf-4cdf-bce0-fc70db24a018:sealant-check:sealant"
+      "model": "hpe-automotive:sealant-check:sealant"
     }
   ],
   "entrypoint": "./run.sh",
