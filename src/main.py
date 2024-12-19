@@ -13,8 +13,9 @@ from viam.resource.easy_resource import EasyResource
 from viam.resource.types import Model, ModelFamily
 from viam.services.vision import *
 from viam.utils import ValueTypes
-from viam.components.camera import Camera
+from viam.components.camera import CameraClient
 from viam.media.utils.pil import viam_to_pil_image, pil_to_viam_image
+from viam.errors import ViamError
 
 import cv2
 import numpy as np
@@ -26,7 +27,7 @@ class Sealant(Vision, EasyResource):
         ModelFamily("hpe-automotive", "sealant-check"), "sealant"
     )
 
-    camera: Camera
+    dependencies: Mapping[ResourceName, ResourceBase]
 
     @classmethod
     def new(
@@ -66,7 +67,7 @@ class Sealant(Vision, EasyResource):
             config (ComponentConfig): The new configuration
             dependencies (Mapping[ResourceName, ResourceBase]): Any dependencies (both implicit and explicit)
         """
-        self.camera = dependencies[Camera.get_resource_name("camera")]
+        self.dependencies = dependencies
         return super().reconfigure(config, dependencies)
 
     async def capture_all_from_camera(
@@ -80,12 +81,30 @@ class Sealant(Vision, EasyResource):
         extra: Optional[Mapping[str, Any]] = None,
         timeout: Optional[float] = None,
     ) -> CaptureAllResult:
-        if self.camera.name != camera_name:
-            raise ValueError("Camera not added as dependency")
-        cam_image = await self.camera.get_image()
+        try:
+            camera = self.dependencies[CameraClient.get_resource_name(camera_name)]
+        except KeyError:
+            raise ViamError(
+                f"Requested camera {camera_name} is not listed in dependencies"
+            )
         result = CaptureAllResult()
-        result.image = self.process_image(cam_image)
+        if isinstance(camera, CameraClient):
+            cam_image = await camera.get_image()
+            result.image = self.process_image(cam_image)
+        else:
+            raise ViamError(
+                f"Requested camera {camera_name} is not a valid CameraClient"
+            )
+        if return_detections:
+            result.detections = []  # await self.get_detections(result.image)
         return result
+
+        # if self.camera.name != camera_name:
+        #     raise ValueError("Camera not added as dependency")
+        # cam_image = await self.camera.get_image()
+        # result = CaptureAllResult()
+        # result.image = self.process_image(cam_image)
+        # return result
 
     async def get_detections_from_camera(
         self,
@@ -94,7 +113,17 @@ class Sealant(Vision, EasyResource):
         extra: Optional[Mapping[str, ValueTypes]] = None,
         timeout: Optional[float] = None,
     ) -> List[Detection]:
-        raise NotImplementedError()
+        try:
+            camera = self.dependencies[CameraClient.get_resource_name(camera_name)]
+        except KeyError:
+            raise ViamError(
+                f"Requested camera {camera_name} is not listed in dependencies"
+            )
+        if type(camera) == CameraClient:
+            image = await camera.get_image()
+            return []  # await self.get_detections(image)
+        else:
+            raise ValueError(f"Camera {camera_name} is not a Camera resource")
 
     async def get_detections(
         self,
@@ -103,7 +132,9 @@ class Sealant(Vision, EasyResource):
         extra: Optional[Mapping[str, ValueTypes]] = None,
         timeout: Optional[float] = None,
     ) -> List[Detection]:
-        raise NotImplementedError()
+        # TODO: Implement detection logic
+        # result = self.process_image(image)
+        return []
 
     async def get_classifications_from_camera(
         self,
@@ -140,7 +171,11 @@ class Sealant(Vision, EasyResource):
         extra: Optional[Mapping[str, ValueTypes]] = None,
         timeout: Optional[float] = None,
     ) -> Vision.Properties:
-        raise NotImplementedError()
+        return Vision.Properties(
+            classifications_supported=False,
+            detections_supported=True,
+            object_point_clouds_supported=False,
+        )
 
     async def do_command(
         self, command, *, timeout=None, **kwargs
@@ -170,8 +205,6 @@ class Sealant(Vision, EasyResource):
         cv2.imwrite("wb_image.jpg", wb_image)
         # Find contours in the binary image
         contours, _ = cv2.findContours(wb_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        # Display the contours on top of the color image
-        # cv2.drawContours(result_image, contours, -1, (0, 255, 0), 3)
         # Filter contours by area size (To be tweaked based upon the ideal shape)
         img_contours_filtered = []
         for contour in contours:
@@ -183,6 +216,8 @@ class Sealant(Vision, EasyResource):
                 # Keep only contours within a certain range
                 img_contours_filtered.append(contour)
         self.logger.info(f"Number of contours: {len(img_contours_filtered)}")
+        self.logger.info(f"Contour: {str(img_contours_filtered)}")
+        # Convert the contours to a list of Detection objects
         # Display the filtered contours on top of the color image
         cv2.drawContours(result_image, img_contours_filtered, -1, (0, 255, 0), 3)
         # Convert the NumPy array back to a PIL image
