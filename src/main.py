@@ -96,7 +96,7 @@ class Sealant(Vision, EasyResource):
             contours = self.find_contours(cam_image)
             result.image = cam_image
             # TODO: Return contours as extra
-            result.extra = {"points": "str(contours)"}
+            result.extra = {"points": contours}
         else:
             raise ViamError(
                 f"Requested camera {camera_name} is not a valid CameraClient"
