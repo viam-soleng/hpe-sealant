@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import sys
 from typing import Any, ClassVar, Final, List, Mapping, Optional, Sequence
 
@@ -20,6 +21,7 @@ from viam.errors import ViamError
 import cv2
 import numpy as np
 from PIL import Image
+import json
 
 
 class Sealant(Vision, EasyResource):
@@ -90,13 +92,13 @@ class Sealant(Vision, EasyResource):
         result = CaptureAllResult()
         if isinstance(camera, CameraClient):
             cam_image = await camera.get_image()
-            result.image = self.process_image(cam_image)
+            result.image, contours = self.process_image(cam_image)
+            # TODO: Add the contours to the extra field
+            # result.extra = {"contours": json.dumps(contours[0])}
         else:
             raise ViamError(
                 f"Requested camera {camera_name} is not a valid CameraClient"
             )
-        if return_detections:
-            result.detections = []  # await self.get_detections(result.image)
         return result
 
         # if self.camera.name != camera_name:
@@ -186,7 +188,7 @@ class Sealant(Vision, EasyResource):
         result = {"felix": "test"}
         return result
 
-    def process_image(self, cam_image: ViamImage) -> ViamImage:
+    def process_image(self, cam_image: ViamImage) -> tuple[ViamImage, List[Detection]]:
         # Convert the ViamImage to a PIL image
         pil_image = viam_to_pil_image(cam_image)
         # Convert the PIL image to a NumPy array
@@ -206,7 +208,7 @@ class Sealant(Vision, EasyResource):
         # Find contours in the binary image
         contours, _ = cv2.findContours(wb_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         # Filter contours by area size (To be tweaked based upon the ideal shape)
-        img_contours_filtered = []
+        contours_filtered = []
         for contour in contours:
             area = cv2.contourArea(contour)
             if (
@@ -214,17 +216,25 @@ class Sealant(Vision, EasyResource):
                 and area > result_image.shape[0] * result_image.shape[1] * 0.15
             ):
                 # Keep only contours within a certain range
-                img_contours_filtered.append(contour)
-        self.logger.info(f"Number of contours: {len(img_contours_filtered)}")
-        self.logger.info(f"Contour: {str(img_contours_filtered)}")
+                contours_filtered.append(contour)
+        self.logger.info(f"Number of contours: {len(contours_filtered)}")
+        self.logger.info(f"Contour: {str(contours_filtered)}")
         # Convert the contours to a list of Detection objects
         # Display the filtered contours on top of the color image
-        cv2.drawContours(result_image, img_contours_filtered, -1, (0, 255, 0), 3)
+        cv2.drawContours(result_image, contours_filtered, -1, (0, 255, 0), 3)
         # Convert the NumPy array back to a PIL image
         pil_image = matlike_to_pil(result_image)
         # Convert the PIL image to a ViamImage
         result_image = pil_to_viam_image(pil_image, CameraMimeType.JPEG)
-        return result_image
+        # return the processed image and a serialized version of the contours
+        detections = [Detection]
+        for contour in contours_filtered:
+            detection = Detection()
+            # TODO add bounding box
+            # detection.bounding_box = cv2.boundingRect(contour)
+            detection.class_name = json.dumps(contour_to_json(contour))
+            detections.append(detection)
+        return result_image, detections
 
 
 def matlike_to_pil(np_image: np.ndarray) -> Image.Image:
@@ -235,6 +245,23 @@ def matlike_to_pil(np_image: np.ndarray) -> Image.Image:
     # Convert the NumPy array to a PIL image
     pil_image = Image.fromarray(np_image)
     return pil_image
+
+
+def contour_to_json(contour: np.ndarray) -> Mapping[str, Any]:
+    # check if contour.dtype is a valid numpy dtype
+    dtype = str(contour.dtype)
+    shape = str(contour.shape)
+    points = json.dumps(contour.tolist())
+    contour_map = {"dtype": dtype, "shape": shape, "points": points}
+    return contour_map
+
+
+def jsoncontours_to_contours(json_contour: Mapping[str, Any]) -> List[np.ndarray]:
+    points = json.loads(json_contour["points"])
+    contour = np.array(points, dtype=json_contour["dtype"]).reshape(
+        json_contour["shape"]
+    )
+    return contour
 
 
 if __name__ == "__main__":
