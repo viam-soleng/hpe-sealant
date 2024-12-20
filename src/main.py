@@ -69,6 +69,7 @@ class Sealant(Vision, EasyResource):
             config (ComponentConfig): The new configuration
             dependencies (Mapping[ResourceName, ResourceBase]): Any dependencies (both implicit and explicit)
         """
+        # Store the dependencies for later use
         self.dependencies = dependencies
         return super().reconfigure(config, dependencies)
 
@@ -92,21 +93,15 @@ class Sealant(Vision, EasyResource):
         result = CaptureAllResult()
         if isinstance(camera, CameraClient):
             cam_image = await camera.get_image()
-            result.image, contours = self.process_image(cam_image)
-            # TODO: Add the contours to the extra field
-            # result.extra = {"contours": json.dumps(contours[0])}
+            contours = self.find_contours(cam_image)
+            result.image = cam_image
+            # TODO: Return contours as extra
+            result.extra = {"points": "str(contours)"}
         else:
             raise ViamError(
                 f"Requested camera {camera_name} is not a valid CameraClient"
             )
         return result
-
-        # if self.camera.name != camera_name:
-        #     raise ValueError("Camera not added as dependency")
-        # cam_image = await self.camera.get_image()
-        # result = CaptureAllResult()
-        # result.image = self.process_image(cam_image)
-        # return result
 
     async def get_detections_from_camera(
         self,
@@ -123,7 +118,7 @@ class Sealant(Vision, EasyResource):
             )
         if type(camera) == CameraClient:
             image = await camera.get_image()
-            return []  # await self.get_detections(image)
+            return await self.get_detections(image)
         else:
             raise ValueError(f"Camera {camera_name} is not a Camera resource")
 
@@ -134,8 +129,8 @@ class Sealant(Vision, EasyResource):
         extra: Optional[Mapping[str, ValueTypes]] = None,
         timeout: Optional[float] = None,
     ) -> List[Detection]:
-        # TODO: Implement detection logic
-        # result = self.process_image(image)
+        # TODO: Return the bounding boxes of the contours
+        # contours = self.find_contours(image)
         return []
 
     async def get_classifications_from_camera(
@@ -182,13 +177,9 @@ class Sealant(Vision, EasyResource):
     async def do_command(
         self, command, *, timeout=None, **kwargs
     ) -> Mapping[str, ValueTypes]:
-        # img = self.camera.get_image()
-        # self.prepare_image(img)
+        raise NotImplementedError()
 
-        result = {"felix": "test"}
-        return result
-
-    def process_image(self, cam_image: ViamImage) -> tuple[ViamImage, List[Detection]]:
+    def find_contours(self, cam_image: ViamImage) -> List:
         # Convert the ViamImage to a PIL image
         pil_image = viam_to_pil_image(cam_image)
         # Convert the PIL image to a NumPy array
@@ -197,44 +188,42 @@ class Sealant(Vision, EasyResource):
         if np_image.ndim == 3 and np_image.shape[2] == 3:
             np_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
         # Create a copy of the image to draw the contours on
-        result_image = np_image.copy()
+        # result_image = np_image.copy()
         # Convert the NumPy array to a grayscale image
         gray_image = cv2.cvtColor(np_image, cv2.COLOR_BGR2GRAY)
         # Threshold the image to create a binary image (black and white)
         _, bw_image = cv2.threshold(gray_image, 127, 255, cv2.THRESH_OTSU)
-        cv2.imwrite("bw_image.jpg", bw_image)
+        # cv2.imwrite("bw_image.jpg", bw_image)
         wb_image = cv2.bitwise_not(bw_image)
-        cv2.imwrite("wb_image.jpg", wb_image)
+        # cv2.imwrite("wb_image.jpg", wb_image)
         # Find contours in the binary image
-        contours, _ = cv2.findContours(wb_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        contours_all, _ = cv2.findContours(
+            wb_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+        )
         # Filter contours by area size (To be tweaked based upon the ideal shape)
         contours_filtered = []
-        for contour in contours:
+        for contour in contours_all:
             area = cv2.contourArea(contour)
             if (
-                area < result_image.shape[0] * result_image.shape[1] * 0.4
-                and area > result_image.shape[0] * result_image.shape[1] * 0.15
+                area < np_image.shape[0] * np_image.shape[1] * 0.4
+                and area > np_image.shape[0] * np_image.shape[1] * 0.15
             ):
                 # Keep only contours within a certain range
                 contours_filtered.append(contour)
         self.logger.info(f"Number of contours: {len(contours_filtered)}")
-        self.logger.info(f"Contour: {str(contours_filtered)}")
+        # self.logger.info(f"Contour: {str(contours_filtered)}")
         # Convert the contours to a list of Detection objects
         # Display the filtered contours on top of the color image
-        cv2.drawContours(result_image, contours_filtered, -1, (0, 255, 0), 3)
+        # cv2.drawContours(result_image, contours_filtered, -1, (0, 255, 0), 3)
         # Convert the NumPy array back to a PIL image
-        pil_image = matlike_to_pil(result_image)
+        # pil_image = matlike_to_pil(result_image)
         # Convert the PIL image to a ViamImage
-        result_image = pil_to_viam_image(pil_image, CameraMimeType.JPEG)
+        # result_image = pil_to_viam_image(pil_image, CameraMimeType.JPEG)
         # return the processed image and a serialized version of the contours
-        detections = [Detection]
+        contours = []
         for contour in contours_filtered:
-            detection = Detection()
-            # TODO add bounding box
-            # detection.bounding_box = cv2.boundingRect(contour)
-            detection.class_name = json.dumps(contour_to_json(contour))
-            detections.append(detection)
-        return result_image, detections
+            contours.append(contour.tolist())
+        return contours
 
 
 def matlike_to_pil(np_image: np.ndarray) -> Image.Image:
@@ -247,21 +236,21 @@ def matlike_to_pil(np_image: np.ndarray) -> Image.Image:
     return pil_image
 
 
-def contour_to_json(contour: np.ndarray) -> Mapping[str, Any]:
+def contour_to_dict(contour: np.ndarray) -> Mapping[str, Any]:
     # check if contour.dtype is a valid numpy dtype
     dtype = str(contour.dtype)
-    shape = str(contour.shape)
-    points = json.dumps(contour.tolist())
+    shape = contour.shape
+    points = contour.tolist()
     contour_map = {"dtype": dtype, "shape": shape, "points": points}
     return contour_map
 
 
-def jsoncontours_to_contours(json_contour: Mapping[str, Any]) -> List[np.ndarray]:
-    points = json.loads(json_contour["points"])
-    contour = np.array(points, dtype=json_contour["dtype"]).reshape(
-        json_contour["shape"]
-    )
-    return contour
+# def jsoncontours_to_contours(json_contour: Mapping[str, Any]) -> List[np.ndarray]:
+#     points = json.loads(json_contour["points"])
+#     contour = np.array(points, dtype=json_contour["dtype"]).reshape(
+#         json_contour["shape"]
+#     )
+#     return contour
 
 
 if __name__ == "__main__":
