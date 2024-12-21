@@ -1,8 +1,9 @@
 import asyncio
 from typing import Any, ClassVar, List, Mapping, Optional, Sequence
 
+
 from typing_extensions import Self
-from viam.media.video import ViamImage
+from viam.media.video import ViamImage, CameraMimeType
 from viam.module.module import Module
 from viam.proto.app.robot import ComponentConfig
 from viam.proto.common import PointCloudObject, ResourceName
@@ -20,7 +21,6 @@ import cv2
 from cv2.typing import MatLike
 import numpy as np
 from PIL import Image
-
 
 class Sealant(Vision, EasyResource):
     MODEL: ClassVar[Model] = Model(
@@ -232,7 +232,6 @@ def contour_to_dict(contour: np.ndarray) -> Mapping[str, Any]:
     points = contour.tolist()
     contour_map = {"dtype": dtype, "shape": shape, "data": points}
     return contour_map
-
 
 if __name__ == "__main__":
     asyncio.run(Module.run_from_registry())
