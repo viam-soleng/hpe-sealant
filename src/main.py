@@ -1,28 +1,25 @@
 import asyncio
-import base64
-import sys
-from typing import Any, ClassVar, Dict, Final, List, Mapping, Optional, Sequence
+from typing import Any, ClassVar, List, Mapping, Optional, Sequence
 
 from typing_extensions import Self
-from viam.media.video import ViamImage, CameraMimeType
+from viam.media.video import ViamImage
 from viam.module.module import Module
 from viam.proto.app.robot import ComponentConfig
 from viam.proto.common import PointCloudObject, ResourceName
-from viam.proto.service.vision import Classification, Detection, GetPropertiesResponse
+from viam.proto.service.vision import Classification, Detection
 from viam.resource.base import ResourceBase
 from viam.resource.easy_resource import EasyResource
 from viam.resource.types import Model, ModelFamily
 from viam.services.vision import *
 from viam.utils import ValueTypes
 from viam.components.camera import CameraClient
-from viam.media.utils.pil import viam_to_pil_image, pil_to_viam_image
+from viam.media.utils.pil import viam_to_pil_image
 from viam.errors import ViamError
 
 import cv2
 from cv2.typing import MatLike
 import numpy as np
 from PIL import Image
-import json
 
 
 class Sealant(Vision, EasyResource):
@@ -182,7 +179,7 @@ class Sealant(Vision, EasyResource):
     ) -> Mapping[str, ValueTypes]:
         raise NotImplementedError()
 
-    def find_contours(self, cam_image: ViamImage) -> Mapping[str, Any]:
+    def find_contours(self, cam_image: ViamImage) -> List[MatLike]:
         # Convert the ViamImage to a PIL image
         pil_image = viam_to_pil_image(cam_image)
         # Convert the PIL image to a NumPy array
