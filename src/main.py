@@ -1,28 +1,26 @@
 import asyncio
-import base64
-import sys
-from typing import Any, ClassVar, Final, List, Mapping, Optional, Sequence
+from typing import Any, ClassVar, List, Mapping, Optional, Sequence
+
 
 from typing_extensions import Self
 from viam.media.video import ViamImage, CameraMimeType
 from viam.module.module import Module
 from viam.proto.app.robot import ComponentConfig
 from viam.proto.common import PointCloudObject, ResourceName
-from viam.proto.service.vision import Classification, Detection, GetPropertiesResponse
+from viam.proto.service.vision import Classification, Detection
 from viam.resource.base import ResourceBase
 from viam.resource.easy_resource import EasyResource
 from viam.resource.types import Model, ModelFamily
 from viam.services.vision import *
 from viam.utils import ValueTypes
 from viam.components.camera import CameraClient
-from viam.media.utils.pil import viam_to_pil_image, pil_to_viam_image
+from viam.media.utils.pil import viam_to_pil_image
 from viam.errors import ViamError
 
 import cv2
+from cv2.typing import MatLike
 import numpy as np
 from PIL import Image
-import json
-
 
 class Sealant(Vision, EasyResource):
     MODEL: ClassVar[Model] = Model(
@@ -95,8 +93,10 @@ class Sealant(Vision, EasyResource):
             cam_image = await camera.get_image()
             contours = self.find_contours(cam_image)
             result.image = cam_image
-            # TODO: Return contours as extra
-            result.extra = {"points": contours}
+            # Serialize contours as extra
+            result.extra = {
+                "contours": [contour_to_dict(contour) for contour in contours]
+            }
         else:
             raise ViamError(
                 f"Requested camera {camera_name} is not a valid CameraClient"
@@ -179,7 +179,7 @@ class Sealant(Vision, EasyResource):
     ) -> Mapping[str, ValueTypes]:
         raise NotImplementedError()
 
-    def find_contours(self, cam_image: ViamImage) -> List:
+    def find_contours(self, cam_image: ViamImage) -> List[MatLike]:
         # Convert the ViamImage to a PIL image
         pil_image = viam_to_pil_image(cam_image)
         # Convert the PIL image to a NumPy array
@@ -201,7 +201,7 @@ class Sealant(Vision, EasyResource):
             wb_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
         )
         # Filter contours by area size (To be tweaked based upon the ideal shape)
-        contours_filtered = []
+        contours_filtered: Sequence[MatLike] = []
         for contour in contours_all:
             area = cv2.contourArea(contour)
             if (
@@ -210,20 +210,8 @@ class Sealant(Vision, EasyResource):
             ):
                 # Keep only contours within a certain range
                 contours_filtered.append(contour)
-        self.logger.info(f"Number of contours: {len(contours_filtered)}")
-        # self.logger.info(f"Contour: {str(contours_filtered)}")
-        # Convert the contours to a list of Detection objects
-        # Display the filtered contours on top of the color image
-        # cv2.drawContours(result_image, contours_filtered, -1, (0, 255, 0), 3)
-        # Convert the NumPy array back to a PIL image
-        # pil_image = matlike_to_pil(result_image)
-        # Convert the PIL image to a ViamImage
-        # result_image = pil_to_viam_image(pil_image, CameraMimeType.JPEG)
-        # return the processed image and a serialized version of the contours
-        contours = []
-        for contour in contours_filtered:
-            contours.append(contour.tolist())
-        return contours
+        self.logger.debug(f"Number of contours: {len(contours_filtered)}")
+        return contours_filtered
 
 
 def matlike_to_pil(np_image: np.ndarray) -> Image.Image:
@@ -237,21 +225,13 @@ def matlike_to_pil(np_image: np.ndarray) -> Image.Image:
 
 
 def contour_to_dict(contour: np.ndarray) -> Mapping[str, Any]:
-    # check if contour.dtype is a valid numpy dtype
     dtype = str(contour.dtype)
-    shape = contour.shape
+    shape = tuple(
+        int(dim) for dim in contour.shape
+    )  # Ensure shape dimensions are integers
     points = contour.tolist()
-    contour_map = {"dtype": dtype, "shape": shape, "points": points}
+    contour_map = {"dtype": dtype, "shape": shape, "data": points}
     return contour_map
-
-
-# def jsoncontours_to_contours(json_contour: Mapping[str, Any]) -> List[np.ndarray]:
-#     points = json.loads(json_contour["points"])
-#     contour = np.array(points, dtype=json_contour["dtype"]).reshape(
-#         json_contour["shape"]
-#     )
-#     return contour
-
 
 if __name__ == "__main__":
     asyncio.run(Module.run_from_registry())
