@@ -1,9 +1,9 @@
 import asyncio
-from typing import Any, ClassVar, List, Mapping, Optional, Sequence
+from typing import Any, ClassVar, List, Mapping, Optional, Sequence, Tuple
 
 
 from typing_extensions import Self
-from viam.media.video import ViamImage, CameraMimeType
+from viam.media.video import ViamImage
 from viam.module.module import Module
 from viam.proto.app.robot import ComponentConfig
 from viam.proto.common import PointCloudObject, ResourceName
@@ -20,7 +20,7 @@ from viam.errors import ViamError
 import cv2
 from cv2.typing import MatLike
 import numpy as np
-from PIL import Image
+
 
 class Sealant(Vision, EasyResource):
     MODEL: ClassVar[Model] = Model(
@@ -91,9 +91,11 @@ class Sealant(Vision, EasyResource):
         result = CaptureAllResult()
         if isinstance(camera, CameraClient):
             cam_image = await camera.get_image()
-            contours = self.find_contours(cam_image)
+            (contours, detections) = self.find_contours(cam_image)
             result.image = cam_image
-            # Serialize contours as extra
+            # Return the bounding boxes of the contours
+            result.detections = detections
+            # Return the contours as extra information
             result.extra = {
                 "contours": [contour_to_dict(contour) for contour in contours]
             }
@@ -129,9 +131,9 @@ class Sealant(Vision, EasyResource):
         extra: Optional[Mapping[str, ValueTypes]] = None,
         timeout: Optional[float] = None,
     ) -> List[Detection]:
-        # TODO: Return the bounding boxes of the contours
-        # contours = self.find_contours(image)
-        return []
+        # Return the bounding boxes of the contours
+        (_, detections) = self.find_contours(image)
+        return detections
 
     async def get_classifications_from_camera(
         self,
@@ -179,7 +181,9 @@ class Sealant(Vision, EasyResource):
     ) -> Mapping[str, ValueTypes]:
         raise NotImplementedError()
 
-    def find_contours(self, cam_image: ViamImage) -> List[MatLike]:
+    def find_contours(
+        self, cam_image: ViamImage
+    ) -> Tuple[List[MatLike], List[Detection]]:
         # Convert the ViamImage to a PIL image
         pil_image = viam_to_pil_image(cam_image)
         # Convert the PIL image to a NumPy array
@@ -187,22 +191,23 @@ class Sealant(Vision, EasyResource):
         # Convert RGB to BGR (OpenCV uses BGR by default)
         if np_image.ndim == 3 and np_image.shape[2] == 3:
             np_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
-        # Create a copy of the image to draw the contours on
-        # result_image = np_image.copy()
         # Convert the NumPy array to a grayscale image
         gray_image = cv2.cvtColor(np_image, cv2.COLOR_BGR2GRAY)
         # Threshold the image to create a binary image (black and white)
+        # The threshold value is determined using Otsu's method but might need to be tweaked:
+        # https://docs.opencv.org/4.x/d7/d4d/tutorial_py_thresholding.html
         _, bw_image = cv2.threshold(gray_image, 127, 255, cv2.THRESH_OTSU)
-        # cv2.imwrite("bw_image.jpg", bw_image)
+        # Invert the binary image (black becomes white and vice versa)
         wb_image = cv2.bitwise_not(bw_image)
-        # cv2.imwrite("wb_image.jpg", wb_image)
-        # Find contours in the binary image
+        # Find the contours in the image
         contours_all, _ = cv2.findContours(
             wb_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
         )
         # Filter contours by area size (To be tweaked based upon the ideal shape)
+        # TODO: Expose filter parameters as configuration
         contours_filtered: Sequence[MatLike] = []
-        for contour in contours_all:
+        detections: List[Detection] = []
+        for idx, contour in enumerate(contours_all):
             area = cv2.contourArea(contour)
             if (
                 area < np_image.shape[0] * np_image.shape[1] * 0.4
@@ -210,18 +215,13 @@ class Sealant(Vision, EasyResource):
             ):
                 # Keep only contours within a certain range
                 contours_filtered.append(contour)
-        self.logger.debug(f"Number of contours: {len(contours_filtered)}")
-        return contours_filtered
-
-
-def matlike_to_pil(np_image: np.ndarray) -> Image.Image:
-    # np_image = cv2.cvtColor(np_image, cv2.COLOR_GRAY2RGB)
-    # Convert BGR to RGB (OpenCV uses BGR by default)
-    if np_image.ndim == 3 and np_image.shape[2] == 3:
-        np_image = cv2.cvtColor(np_image, cv2.COLOR_BGR2RGB)
-    # Convert the NumPy array to a PIL image
-    pil_image = Image.fromarray(np_image)
-    return pil_image
+                x, y, w, h = cv2.boundingRect(contour)
+                detection = Detection(x_min=x, y_min=y, x_max=x + w, y_max=y + h)
+                detection.confidence = 1.0
+                detection.class_name = str(len(contours_filtered) - 1)
+                detections.append(detection)
+        self.logger.debug(f"Number of contours after filter: {len(contours_filtered)}")
+        return (contours_filtered, detections)
 
 
 def contour_to_dict(contour: np.ndarray) -> Mapping[str, Any]:
@@ -232,6 +232,7 @@ def contour_to_dict(contour: np.ndarray) -> Mapping[str, Any]:
     points = contour.tolist()
     contour_map = {"dtype": dtype, "shape": shape, "data": points}
     return contour_map
+
 
 if __name__ == "__main__":
     asyncio.run(Module.run_from_registry())
