@@ -5,8 +5,8 @@ h2==4.1.0
 hpack==4.0.0
 hyperframe==6.0.1
 multidict==6.1.0
-numpy==2.2.0
-opencv-python==4.10.0.84
+numpy==2.2.1
+opencv-python-headless==4.10.0.84
 pillow==11.0.0
 protobuf==5.28.2
 pymongo==4.10.1
