@@ -66,6 +66,8 @@ class Sealant(Vision, EasyResource):
             config (ComponentConfig): The new configuration
             dependencies (Mapping[ResourceName, ResourceBase]): Any dependencies (both implicit and explicit)
         """
+        self.logger.info("Reconfiguring Sealant service")
+
         # Load the reference contours from the pickle file
         # catch if no file is found
         try:

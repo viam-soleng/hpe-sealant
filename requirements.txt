@@ -11,4 +11,4 @@ pillow==11.0.0
 protobuf==5.28.2
 pymongo==4.10.1
 typing_extensions==4.12.2
-viam-sdk==0.36.0
+viam-sdk==0.37.0
