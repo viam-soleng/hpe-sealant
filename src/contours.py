@@ -28,13 +28,15 @@ def find_contours(image: Image) -> Tuple[List[MatLike], List[Detection]]:
     detections: List[Detection] = []
     for idx, contour in enumerate(contours_all):
         area = cv2.contourArea(contour)
+        x, y, w, h = cv2.boundingRect(contour)
         if (
             area < np_image.shape[0] * np_image.shape[1] * 0.4
             and area > np_image.shape[0] * np_image.shape[1] * 0.15
+            and h < wb_image.shape[0]
+            and w < wb_image.shape[1]
         ):
             # Keep only contours within a certain range
             contours_filtered.append(contour)
-            x, y, w, h = cv2.boundingRect(contour)
             detection = Detection(x_min=x, y_min=y, x_max=x + w, y_max=y + h)
             detection.confidence = 1.0
             detection.class_name = str(len(contours_filtered) - 1)
