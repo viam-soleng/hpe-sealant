@@ -3,7 +3,7 @@ import pickle
 from typing import Any, ClassVar, List, Mapping, Optional, Sequence, Tuple
 
 from typing_extensions import Self
-from viam.media.video import ViamImage
+from viam.media.video import ViamImage, CameraMimeType
 from viam.module.module import Module
 from viam.proto.app.robot import ComponentConfig
 from viam.proto.common import PointCloudObject, ResourceName
@@ -67,11 +67,13 @@ class Sealant(Vision, EasyResource):
             dependencies (Mapping[ResourceName, ResourceBase]): Any dependencies (both implicit and explicit)
         """
         # Load the reference contours from the pickle file
-        # catch if no file is foun
+        # catch if no file is found
         try:
             with open("contours.pickle", "rb") as f:
                 self.ref_contours = pickle.load(f)
+                self.logger.info(f"{len(self.ref_contours)} reference contours loaded")
         except FileNotFoundError:
+            self.logger.info("No reference contours found, showing detected contours")
             self.ref_contours = None
         # Store the dependencies for later use
         self.dependencies = dependencies
@@ -191,11 +193,12 @@ class Sealant(Vision, EasyResource):
         self, command, *, timeout=None, **kwargs
     ) -> Mapping[str, ValueTypes]:
         if command["command"] == "save_contours":
+            self.logger.info("save_contours: %s", command)
             if "camera_name" not in command:
                 raise ViamError("Missing camera_name in command")
             try:
                 camera = self.dependencies[
-                    CameraClient.get_resource_name({command["camera_name"]})
+                    CameraClient.get_resource_name(command["camera_name"])
                 ]
             except KeyError:
                 raise ViamError(
@@ -205,9 +208,9 @@ class Sealant(Vision, EasyResource):
                 image = await camera.get_image()
                 pil_image = viam_to_pil_image(image)
                 (contours, _) = find_contours(pil_image)
-                save_contours(contours, "filename")
-                pil_image = draw_contours(pil_image, contours)
-                return pil_to_viam_image(pil_image)
+                save_contours(contours, "contours.pickle")
+                # pil_image = draw_contours(pil_image, contours)
+                return {"result": f"{len(contours)} contours saved"}
             else:
                 raise ViamError(
                     f"Requested camera {command["camera_name"]} is not a valid CameraClient"
