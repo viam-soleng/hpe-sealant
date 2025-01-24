@@ -8,7 +8,7 @@ multidict==6.1.0
 numpy==2.2.0
 opencv-python-headless==4.10.0.84
 pillow==11.0.0
-protobuf==5.28.2
+protobuf==5.29.1
 pymongo==4.10.1
 typing_extensions==4.12.2
 viam-sdk==0.37.0
