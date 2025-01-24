@@ -1,8 +1,10 @@
 import asyncio
+import pickle
+import os
 from typing import Any, ClassVar, List, Mapping, Optional, Sequence, Tuple
 
 from typing_extensions import Self
-from viam.media.video import ViamImage
+from viam.media.video import ViamImage, CameraMimeType
 from viam.module.module import Module
 from viam.proto.app.robot import ComponentConfig
 from viam.proto.common import PointCloudObject, ResourceName
@@ -13,12 +15,12 @@ from viam.resource.types import Model, ModelFamily
 from viam.services.vision import *
 from viam.utils import ValueTypes
 from viam.components.camera import CameraClient
-from viam.media.utils.pil import viam_to_pil_image
 from viam.errors import ViamError
+from viam.media.utils.pil import viam_to_pil_image, pil_to_viam_image
 
-import cv2
-from cv2.typing import MatLike
-import numpy as np
+
+from .contours import find_contours, save_contours, draw_contours, contour_to_dict
+
 
 class Sealant(Vision, EasyResource):
     MODEL: ClassVar[Model] = Model(
@@ -65,6 +67,17 @@ class Sealant(Vision, EasyResource):
             config (ComponentConfig): The new configuration
             dependencies (Mapping[ResourceName, ResourceBase]): Any dependencies (both implicit and explicit)
         """
+        self.logger.info("Reconfiguring Sealant service")
+
+        # Load the reference contours from the pickle file
+        # catch if no file is found
+        self.ref_contours = None
+        try:
+            with open("contours.pickle", "rb") as f:
+                self.ref_contours = pickle.load(f)
+                self.logger.info(f"{len(self.ref_contours)} reference contours loaded")
+        except FileNotFoundError:
+            self.logger.info("No reference contours found, showing detected contours")
         # Store the dependencies for later use
         self.dependencies = dependencies
         return super().reconfigure(config, dependencies)
@@ -88,9 +101,17 @@ class Sealant(Vision, EasyResource):
             )
         result = CaptureAllResult()
         if isinstance(camera, CameraClient):
-            cam_image = await camera.get_image()
-            (contours, detections) = self.find_contours(cam_image)
-            result.image = cam_image
+            image = await camera.get_image()
+            pil_image = viam_to_pil_image(image)
+            (contours, detections) = find_contours(pil_image)
+            # Draw the detected contours on the image if no reference contours are provided
+            if self.ref_contours is None or len(self.ref_contours) == 0:
+                img = draw_contours(pil_image, contours)
+                result.image = pil_to_viam_image(img, image.mime_type)
+            else:
+                # Draw the reference contours on the image
+                pil_image = draw_contours(pil_image, self.ref_contours, (255, 0, 255))
+                result.image = pil_to_viam_image(pil_image, image.mime_type)
             # Return the bounding boxes of the contours
             result.detections = detections
             # Return the contours as extra information
@@ -130,7 +151,7 @@ class Sealant(Vision, EasyResource):
         timeout: Optional[float] = None,
     ) -> List[Detection]:
         # Return the bounding boxes of the contours
-        (_, detections) = self.find_contours(image)
+        (_, detections) = find_contours(image)
         return detections
 
     async def get_classifications_from_camera(
@@ -177,59 +198,40 @@ class Sealant(Vision, EasyResource):
     async def do_command(
         self, command, *, timeout=None, **kwargs
     ) -> Mapping[str, ValueTypes]:
-        raise NotImplementedError()
-
-    def find_contours(
-        self, cam_image: ViamImage
-    ) -> Tuple[List[MatLike], List[Detection]]:
-        # Convert the ViamImage to a PIL image
-        pil_image = viam_to_pil_image(cam_image)
-        # Convert the PIL image to a NumPy array
-        np_image = np.array(pil_image)
-        # Convert RGB to BGR (OpenCV uses BGR by default)
-        if np_image.ndim == 3 and np_image.shape[2] == 3:
-            np_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
-        # Convert the NumPy array to a grayscale image
-        gray_image = cv2.cvtColor(np_image, cv2.COLOR_BGR2GRAY)
-        # Threshold the image to create a binary image (black and white)
-        # The threshold value is determined using Otsu's method but might need to be tweaked:
-        # https://docs.opencv.org/4.x/d7/d4d/tutorial_py_thresholding.html
-        _, bw_image = cv2.threshold(gray_image, 127, 255, cv2.THRESH_OTSU)
-        # Invert the binary image (black becomes white and vice versa)
-        wb_image = cv2.bitwise_not(bw_image)
-        # Find the contours in the image
-        contours_all, _ = cv2.findContours(
-            wb_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
-        )
-        # Filter contours by area size (To be tweaked based upon the ideal shape)
-        # TODO: Expose filter parameters as configuration
-        contours_filtered: Sequence[MatLike] = []
-        detections: List[Detection] = []
-        for idx, contour in enumerate(contours_all):
-            area = cv2.contourArea(contour)
-            if (
-                area < np_image.shape[0] * np_image.shape[1] * 0.4
-                and area > np_image.shape[0] * np_image.shape[1] * 0.15
-            ):
-                # Keep only contours within a certain range
-                contours_filtered.append(contour)
-                x, y, w, h = cv2.boundingRect(contour)
-                detection = Detection(x_min=x, y_min=y, x_max=x + w, y_max=y + h)
-                detection.confidence = 1.0
-                detection.class_name = str(len(contours_filtered) - 1)
-                detections.append(detection)
-        self.logger.debug(f"Number of contours after filter: {len(contours_filtered)}")
-        return (contours_filtered, detections)
+        if command["command"] == "save_contours":
+            self.logger.info("save_contours: %s", command)
+            if "camera_name" not in command:
+                raise ViamError("Missing camera_name in command")
+            try:
+                camera = self.dependencies[
+                    CameraClient.get_resource_name(command["camera_name"])
+                ]
+            except KeyError:
+                raise ViamError(
+                    f"Requested camera {command["camera_name"]} is not listed in dependencies"
+                )
+            if isinstance(camera, CameraClient):
+                image = await camera.get_image()
+                pil_image = viam_to_pil_image(image)
+                (contours, _) = find_contours(pil_image)
+                save_contours(contours, "contours.pickle")
+                # pil_image = draw_contours(pil_image, contours)
+                self.ref_contours = contours
+                return {"result": f"{len(contours)} contours loaded and saved to file"}
+            else:
+                raise ViamError(
+                    f"Requested camera {command["camera_name"]} is not a valid CameraClient"
+                )
+        if command["command"] == "delete_contours":
+            self.logger.info("delete_contours: %s", command)
+            if os.path.exists("contours.pickle"):
+                os.remove("contours.pickle")
+            else:
+                self.logger.info("No reference contours file found")
+            self.ref_contours = None
+            return {"result": "Reference contours deleted"}
+        raise ViamError(f"Unknown command {command}")
 
 
-def contour_to_dict(contour: np.ndarray) -> Mapping[str, Any]:
-    dtype = str(contour.dtype)
-    shape = tuple(
-        int(dim) for dim in contour.shape
-    )  # Ensure shape dimensions are integers
-    points = contour.tolist()
-    contour_map = {"dtype": dtype, "shape": shape, "data": points}
-    return contour_map
-  
 if __name__ == "__main__":
     asyncio.run(Module.run_from_registry())
