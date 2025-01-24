@@ -1,5 +1,6 @@
 import asyncio
 import pickle
+import os
 from typing import Any, ClassVar, List, Mapping, Optional, Sequence, Tuple
 
 from typing_extensions import Self
@@ -70,13 +71,13 @@ class Sealant(Vision, EasyResource):
 
         # Load the reference contours from the pickle file
         # catch if no file is found
+        self.ref_contours = None
         try:
             with open("contours.pickle", "rb") as f:
                 self.ref_contours = pickle.load(f)
                 self.logger.info(f"{len(self.ref_contours)} reference contours loaded")
         except FileNotFoundError:
             self.logger.info("No reference contours found, showing detected contours")
-            self.ref_contours = None
         # Store the dependencies for later use
         self.dependencies = dependencies
         return super().reconfigure(config, dependencies)
@@ -103,11 +104,14 @@ class Sealant(Vision, EasyResource):
             image = await camera.get_image()
             pil_image = viam_to_pil_image(image)
             (contours, detections) = find_contours(pil_image)
-            # Draw the contours on the image if no reference contours are provided
+            # Draw the detected contours on the image if no reference contours are provided
             if self.ref_contours is None or len(self.ref_contours) == 0:
-                result.image = pil_to_viam_image(
-                    draw_contours(pil_image, contours), image.mime_type
-                )
+                img = draw_contours(pil_image, contours)
+                result.image = pil_to_viam_image(img, image.mime_type)
+            else:
+                # Draw the reference contours on the image
+                pil_image = draw_contours(pil_image, self.ref_contours, (255, 0, 255))
+                result.image = pil_to_viam_image(pil_image, image.mime_type)
             # Return the bounding boxes of the contours
             result.detections = detections
             # Return the contours as extra information
@@ -212,11 +216,20 @@ class Sealant(Vision, EasyResource):
                 (contours, _) = find_contours(pil_image)
                 save_contours(contours, "contours.pickle")
                 # pil_image = draw_contours(pil_image, contours)
-                return {"result": f"{len(contours)} contours saved"}
+                self.ref_contours = contours
+                return {"result": f"{len(contours)} contours loaded and saved to file"}
             else:
                 raise ViamError(
                     f"Requested camera {command["camera_name"]} is not a valid CameraClient"
                 )
+        if command["command"] == "delete_contours":
+            self.logger.info("delete_contours: %s", command)
+            if os.path.exists("contours.pickle"):
+                os.remove("contours.pickle")
+            else:
+                self.logger.info("No reference contours file found")
+            self.ref_contours = None
+            return {"result": "Reference contours deleted"}
         raise ViamError(f"Unknown command {command}")
 
 

@@ -54,7 +54,11 @@ def contour_to_dict(contour: np.ndarray) -> Mapping[str, Any]:
     return contour_map
 
 
-def draw_contours(image: Image, contours: List[np.ndarray]) -> Image:
+def draw_contours(
+    image: Image,
+    contours: List[np.ndarray],
+    color: Optional[Tuple[int, int, int]] = None,
+) -> Image:
     """This function draws the contours on the image.
 
     Args:
@@ -64,8 +68,10 @@ def draw_contours(image: Image, contours: List[np.ndarray]) -> Image:
     Returns:
         np.ndarray: The image with the contours drawn on it
     """
+    if color is None:
+        color = (0, 255, 0)
     image = pil_to_opencv(image)
-    cv2.drawContours(image, contours, -1, (0, 255, 0), 3)
+    cv2.drawContours(image, contours, -1, color, 3)
     image_with_contours = opencv_to_pil(image)
     return image_with_contours
 
