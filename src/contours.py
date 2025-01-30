@@ -6,8 +6,29 @@ import pickle
 from viam.proto.service.vision import Detection
 from PIL import Image
 
+from dataclasses import dataclass
 
-def find_contours(image: Image) -> Tuple[List[MatLike], List[Detection]]:
+
+@dataclass
+class ViamContour:
+    """Class for keeping track of contour information."""
+
+    contour: Sequence[MatLike]
+    area: float
+    hausdorff: Optional[Dict[str, float]]
+    detection: Optional[Detection]
+
+
+def find_contours(
+    image: Image,
+    min_area: int,
+    max_area: int,
+    min_width: int,
+    max_width: int,
+    min_height: int,
+    max_height: int,
+    max_contours: int,
+) -> List[ViamContour]:
     """This function finds contours in an image."""
     np_image = pil_to_opencv(image)
     # Convert RGB to BGR gray scale (OpenCV uses BGR by default)
@@ -20,42 +41,32 @@ def find_contours(image: Image) -> Tuple[List[MatLike], List[Detection]]:
     # Invert the binary image (black becomes white and vice versa)
     wb_image = cv2.bitwise_not(bw_image)
     # Find the contours in the image
-    contours_all, _ = cv2.findContours(wb_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    # Filter contours by area size (To be tweaked based upon the ideal shape)
-    # TODO: Expose filter parameters as configuration
-    contours_filtered: Sequence[MatLike] = []
-    detections: List[Detection] = []
-    for idx, contour in enumerate(contours_all):
-        area = cv2.contourArea(contour)
-        x, y, w, h = cv2.boundingRect(contour)
-        if (
-            area < np_image.shape[0] * np_image.shape[1] * 0.4
-            and area > np_image.shape[0] * np_image.shape[1] * 0.15
-            and h < wb_image.shape[0]
-            and w < wb_image.shape[1]
-        ):
-            # Keep only contours within a certain range
-            contours_filtered.append(contour)
-            detection = Detection(x_min=x, y_min=y, x_max=x + w, y_max=y + h)
-            detection.confidence = 1.0
-            detection.class_name = str(len(contours_filtered) - 1)
-            detections.append(detection)
-    return (contours_filtered, detections)
+    contours, _ = cv2.findContours(wb_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # Filter contours by width and height
+    if min_width > 0 or min_height > 0 or max_width > 0 or max_height > 0:
+        contours = filter_contours_by_width_height(
+            contours, min_width, min_height, max_width, max_height
+        )
+    if min_area > 0 or max_area > 0:
+        contours = filter_contours_by_area(contours, min_area, max_area)
+    if max_contours > 0:
+        contours = contours[:max_contours]
+    viam_contours: List[ViamContour] = []
+    for ctraw in contours:
+        vctr = ViamContour(
+            contour=ctraw,
+            area=cv2.contourArea(ctraw),
+            detection=contour_to_detection(ctraw),
+            hausdorff={},
+        )
+        viam_contours.append(vctr)
 
-
-def contour_to_dict(contour: np.ndarray) -> Mapping[str, Any]:
-    dtype = str(contour.dtype)
-    shape = tuple(
-        int(dim) for dim in contour.shape
-    )  # Ensure shape dimensions are integers
-    points = contour.tolist()
-    contour_map = {"dtype": dtype, "shape": shape, "data": points}
-    return contour_map
+    return viam_contours
 
 
 def draw_contours(
     image: Image,
-    contours: List[np.ndarray],
+    contours: List[ViamContour],
     color: Optional[Tuple[int, int, int]] = None,
 ) -> Image:
     """This function draws the contours on the image.
@@ -70,20 +81,24 @@ def draw_contours(
     if color is None:
         color = (0, 255, 0)
     image = pil_to_opencv(image)
-    cv2.drawContours(image, contours, -1, color, 3)
+    for contour in contours:
+        cv2.drawContours(image, [contour.contour], -1, color, 3)
     image_with_contours = opencv_to_pil(image)
     return image_with_contours
 
 
-def save_contours(contour: np.ndarray, filename: str) -> None:
+def save_contours(contours: List[ViamContour], filename: str) -> None:
     """This function saves the contour to a file.
 
     Args:
-        contour (np.ndarray): The contour to save
+        contour (ViamContour): The contour to save
         filename (str): The filename to save the contour to
     """
+    for contour in contours:
+        # Clear the detection field before saving
+        contour.detection = None
     with open(filename, "wb") as f:
-        pickle.dump(contour, f)
+        pickle.dump(contours, f)
 
 
 def pil_to_opencv(pil_image: Image.Image) -> np.ndarray:
@@ -97,11 +112,9 @@ def pil_to_opencv(pil_image: Image.Image) -> np.ndarray:
     """
     # Convert PIL image to NumPy array
     np_image = np.array(pil_image)
-
     # Convert RGB to BGR (OpenCV uses BGR by default)
     if np_image.ndim == 3 and np_image.shape[2] == 3:
         np_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
-
     return np_image
 
 
@@ -124,9 +137,9 @@ def opencv_to_pil(np_image: np.ndarray) -> Image.Image:
     return pil_image
 
 
-def compare_contours(
-    ref_contours: List[np.ndarray], det_contours: List[np.ndarray]
-) -> Dict[str, float]:
+def compare_hausdorff(
+    ref_contours: List[ViamContour], det_contours: List[ViamContour]
+) -> List[ViamContour]:
     """This function compares the reference contours with the detected contours using Hausdorff distance.
     This metric measures the maximum distance between any point on one contour and the closest point on the other contour.
     It is useful for assessing the overall dissimilarity between shapes, even if they have slight variations in form.
@@ -135,17 +148,96 @@ def compare_contours(
         ref_contours (List[np.ndarray]): The reference contours
         det_contours (List[np.ndarray]): The detected contours
     """
-
+    result: List[ViamContour] = []
     # Create Hausdorff distance extractor
     hausdorff_dist = cv2.createHausdorffDistanceExtractor()
 
-    results = []
-    for ref_idx, ref_contour in enumerate(ref_contours):
-        for det_idx, det_contour in enumerate(det_contours):
+    # Compute the Hausdorff distance between the reference and detected contours
+    for det_idx, det_contour in enumerate(det_contours):
+        for ref_idx, ref_contour in enumerate(ref_contours):
             # Compute the Hausdorff distance between the reference and detected contours
-            distance = hausdorff_dist.computeDistance(ref_contour, det_contour)
-            results.append(
-                {"ref_cont": ref_idx, "det_contour": det_idx, "distance": distance}
+            distance = hausdorff_dist.computeDistance(
+                ref_contour.contour, det_contour.contour
             )
+            det_contour.hausdorff[str(ref_idx)] = distance
+        result.append(det_contour)
+    return result
 
-    return results
+
+def contour_to_detection(contour: MatLike) -> Detection:
+    """Convert a contour to a Detection object.
+
+    Args:
+        contour (np.ndarray): The contour to convert.
+
+    Returns:
+        Detection: The converted Detection object.
+    """
+    x, y, w, h = cv2.boundingRect(contour)
+    detection = Detection(
+        x_min=x,
+        y_min=y,
+        x_max=x + w,
+        y_max=y + h,
+    )
+    detection.confidence = 1.0
+    detection.class_name = "contour_bbox"
+    return detection
+
+
+def filter_contours_by_area(
+    contours: List[MatLike], min_area: int, max_area: int
+) -> Sequence[MatLike]:
+    """Filter contours by area size.
+
+    Args:
+        contours (List[np.ndarray]): The contours to filter.
+        min_area (int): The minimum area size.
+        max_area (int): The maximum area size.
+
+    Returns:
+        List[np.ndarray]: The filtered contours.
+    """
+    filtered_contours = []
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if (min_area <= area <= max_area) or (min_area <= area and max_area == 0):
+            filtered_contours.append(contour)
+    return filtered_contours
+
+
+def filter_contours_by_width_height(
+    contours: Sequence[MatLike],
+    min_width: int,
+    min_height: int,
+    max_width: int,
+    max_height: int,
+) -> Sequence[MatLike]:
+    """Filter contours by width and height.
+
+    Args:
+        contours (List[np.ndarray]): The contours to filter.
+        min_width (int): The minimum width.
+        min_height (int): The minimum height.
+
+    Returns:
+        List[MatLike]: The filtered contours.
+    """
+    filtered_contours = []
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        if (min_width <= w <= max_width or min_width <= w and max_width == 0) and (
+            min_height <= h <= max_height or min_height <= h and max_height == 0
+        ):
+            filtered_contours.append(contour)
+    return filtered_contours
+
+
+def contour_to_dict(contour: np.ndarray) -> Mapping[str, Any]:
+    dtype = str(contour.dtype)
+    shape = tuple(
+        int(dim) for dim in contour.shape
+    )  # Ensure shape dimensions are integers
+    points = contour.tolist()
+    contour_map = {"dtype": dtype, "shape": shape, "data": points}
+    return contour_map

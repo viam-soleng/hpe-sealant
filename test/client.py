@@ -36,11 +36,11 @@ async def main():
     # Call the contour detection vision service "vision-sealant" on the robot
     vision_sealant = VisionClient.from_robot(machine, "vision-sealant")
     result = await vision_sealant.capture_all_from_camera(
-        "sealant-big", return_image=True
+        "sealant-big", return_image=True, return_detections=True
     )
     # Extract opencv contours from the result
-    contours = [dict_to_contour(contour) for contour in result.extra["contours"]]
-    print(f"Number of contours detected: {len(contours)}")
+    # cv_contours = [dict_to_contour(contour) for contour in result.extra["cv_contours"]]
+    print(f"Number of contours detected: {len(result.extra['contours'])}")
     image = viam_to_pil_image(result.image)
     np_image = cv2.cvtColor(np.array(image), cv2.COLOR_BGR2RGB)
     # cv2.imshow("image", np.array(np_image))
@@ -52,7 +52,9 @@ async def main():
     # cv2.waitKey(5000)
 
     print("Hausdorff distance between reference contours and detected contours:")
-    pprint(result.extra["hausdorff"])
+    pprint(result.extra)
+
+    pprint(result.detections)
 
     # Don't forget to close the machine when you're done!
     await machine.close()
