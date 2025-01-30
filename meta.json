@@ -7,7 +7,8 @@
   "models": [
     {
       "api": "rdk:service:vision",
-      "model": "hpe-automotive:sealant-check:sealant"
+      "model": "hpe-automotive:sealant-check:sealant",
+      "markdown_link": "README.md#model-hpe-automotivesealant-checksealant"
     }
   ],
   "entrypoint": "./run.sh",
