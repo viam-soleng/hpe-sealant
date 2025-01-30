@@ -10,12 +10,12 @@ This module implements a Viam `VisionService`.
 
 The module works without configuration but limiting the detected contours is always recommended:
 
-\`\`\`json
+```json
 {
 "draw_contours": "both",
 "max_contours": 10
 }
-\`\`\`
+```
 
 #### Attributes
 
@@ -34,7 +34,7 @@ The following attributes are available for this model:
 
 #### Example Configuration
 
-\`\`\`json
+```json
 {
 "max_area": 3127349,
 "max_width": 2000,
@@ -42,7 +42,7 @@ The following attributes are available for this model:
 "max_contours": 10,
 "min_area": 1127349
 }
-\`\`\`
+```
 
 ### DoCommand
 
@@ -50,17 +50,17 @@ This module provides two `do_commands`, one for storing rerference contours and 
 
 #### Store Contours
 
-\`\`\`json
+```json
 {
 "command": "save_contours",
 "camera_name":"sealant-ref"
 }
-\`\`\`
+```
 
 #### Delete Contours
 
-\`\`\`json
+```json
 {
 "command": "delete_contours"
 }
-\`\`\`
+```
