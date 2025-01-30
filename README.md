@@ -46,15 +46,21 @@ The following attributes are available for this model:
 
 ### DoCommand
 
-TODO: If your model implements DoCommand, provide an example payload of each command that is supported and the arguments that can be used. If your model does not implement DoCommand, remove this section.
+This module provides two `do_commands`, one for storing rerference contours and the second one to delete the stored reference contours.
 
-#### Example DoCommand
+#### Store Contours
 
 \`\`\`json
 {
-"command_name": {
-"arg1": "foo",
-"arg2": 1
+"command": "save_contours",
+"camera_name":"sealant-ref"
 }
+\`\`\`
+
+#### Delete Contours
+
+\`\`\`json
+{
+"command": "delete_contours"
 }
 \`\`\`
