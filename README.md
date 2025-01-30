@@ -1,25 +1,67 @@
-# hpe-sealant
+# Module OpenCV Contours Detection and Comparison
 
-This module wraps opencv contour finding functions into a Viam module. It returns the contours found in an image as part of the `extra` attribute when calling `capture_all_from_camera()`. Additionally it returns the bounding boxes of the contours as detections.
+This module uses OpenCV contour features to detect such, filter and compare them. For example you could use this module to store reference contours and then use other images to find the same contours and compare them to the stored references.
 
-This module also contains a sample client script, explaining how to work with the returned data.
+## Model hpe-automotive:sealant-check:sealant"
 
-To get this module working, you must add a camera as a depedency in the configuration!
+This module implements a Viam `VisionService`.
 
+### Configuration
 
-The module allows storing reference contours using the following do_command():
+The module works without configuration but limiting the detected contours is always recommended:
 
 ```json
 {
-  "command":"save_contours",
-  "camera_name":"camera_name"
+"draw_contours": "both",
+"max_contours": 10
 }
 ```
-You can also delete the stored contours with the following command:
+
+#### Attributes
+
+The following attributes are available for this model:
+
+| Name            | Type   | Inclusion | Description                                                                                           |
+| --------------- | ------ | --------- | ----------------------------------------------------------------------------------------------------- |
+| `draw_contours` | string | Optional  | Draws the available contours on the returned image ["reference", "detected", "both"]. Default is none |
+| `max_contours`  | int    | Optional  | Maximum number of contours processed                                                                  |
+| `min_area`      | float  | Optional  | Minimal contour area to be considered                                                                 |
+| `max_area`      | float  | Optional  | Maximal contour area to be considered                                                                 |
+| `min_height`    | int    | Optional  | Minimal contour height to be considered                                                               |
+| `max_height`    | int    | Optional  | Maximal contour height to be considered                                                               |
+| `min_width`     | int    | Optional  | Minimal contour width to be considered                                                                |
+| `max_width`     | int    | Optional  | Maximal contour width to be considered                                                                |
+
+#### Example Configuration
 
 ```json
 {
-  "command":"delete_contours"
+"max_area": 3127349,
+"max_width": 2000,
+"draw_contours": "both",
+"max_contours": 10,
+"min_area": 1127349
+}
+```
+
+### DoCommand
+
+This module provides two `do_commands`, one for storing rerference contours and the second one to delete the stored reference contours.
+
+#### Store Contours
+
+```json
+{
+"command": "save_contours",
+"camera_name":"sealant-ref"
+}
+```
+
+#### Delete Contours
+
+```json
+{
+"command": "delete_contours"
 }
 ```
 

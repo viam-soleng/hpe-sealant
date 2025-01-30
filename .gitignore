@@ -162,3 +162,4 @@ cython_debug/
 .installed
 *.jpg
 
+contours.pickle

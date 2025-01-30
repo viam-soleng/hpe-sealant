@@ -1,7 +1,7 @@
 import asyncio
 import pickle
 import os
-from typing import Any, ClassVar, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, ClassVar, List, Mapping, Optional, Sequence
 
 from typing_extensions import Self
 from viam.media.video import ViamImage, CameraMimeType
@@ -18,8 +18,14 @@ from viam.components.camera import CameraClient
 from viam.errors import ViamError
 from viam.media.utils.pil import viam_to_pil_image, pil_to_viam_image
 
-
-from .contours import find_contours, save_contours, draw_contours, contour_to_dict
+from .contours import (
+    find_contours,
+    save_contours,
+    draw_contours,
+    contour_to_dict,
+    compare_hausdorff,
+    ViamContour,
+)
 
 
 class Sealant(Vision, EasyResource):
@@ -56,6 +62,67 @@ class Sealant(Vision, EasyResource):
         Returns:
             Sequence[str]: A list of implicit dependencies
         """
+
+        # Check if draw_contours is set to string in config
+        if "draw_contours" in config.attributes.fields:
+            if not config.attributes.fields["draw_contours"].HasField("string_value"):
+                raise Exception("draw_contours must be a string.")
+            draw_contours = config.attributes.fields["draw_contours"].string_value
+            # Check if draw_contours is not set to reference or detected or both
+            if not draw_contours in ["reference", "detected", "both"]:
+                raise Exception(
+                    "draw_contours must be set to reference, detected or both"
+                )
+        # Check if max_contours is set to number in config
+        if "max_contours" in config.attributes.fields:
+            if not config.attributes.fields["max_contours"].HasField("number_value"):
+                raise Exception("max_contours must be a number.")
+            max_contours = config.attributes.fields["max_contours"].number_value
+            if not max_contours >= 0:
+                raise Exception("max_contours must be a positive number.")
+
+        # Check if min_area and max_area are set to number in config
+        if "min_area" in config.attributes.fields:
+            if not config.attributes.fields["min_area"].HasField("number_value"):
+                raise Exception("min_area must be a number.")
+            min_area = config.attributes.fields["min_area"].number_value
+            if not min_area >= 0:
+                raise Exception("min_area must be a positive number.")
+        if "max_area" in config.attributes.fields:
+            if not config.attributes.fields["max_area"].HasField("number_value"):
+                raise Exception("max_area must be a number.")
+            max_area = config.attributes.fields["max_area"].number_value
+            if not max_area >= 0:
+                raise Exception("max_area must be a positive number.")
+
+        # Check if min_width and max_width are set to number in config
+        if "min_width" in config.attributes.fields:
+            if not config.attributes.fields["min_width"].HasField("number_value"):
+                raise Exception("min_width must be a number.")
+            min_width = config.attributes.fields["min_width"].number_value
+            if not min_width >= 0:
+                raise Exception("min_width must be a positive number.")
+        if "max_width" in config.attributes.fields:
+            if not config.attributes.fields["max_width"].HasField("number_value"):
+                raise Exception("max_width must be a number.")
+            max_width = config.attributes.fields["max_width"].number_value
+            if not max_width >= 0:
+                raise Exception("max_width must be a positive number.")
+
+        # Check if min_height and max_height are set to number in config
+        if "min_height" in config.attributes.fields:
+            if not config.attributes.fields["min_height"].HasField("number_value"):
+                raise Exception("min_height must be a number.")
+            min_height = config.attributes.fields["min_height"].number_value
+            if not min_height >= 0:
+                raise Exception("min_height must be a positive number.")
+        if "max_height" in config.attributes.fields:
+            if not config.attributes.fields["max_height"].HasField("number_value"):
+                raise Exception("max_height must be a number.")
+            max_height = config.attributes.fields["max_height"].number_value
+            if not max_height >= 0:
+                raise Exception("max_height must be a positive number.")
+
         return []
 
     def reconfigure(
@@ -69,14 +136,64 @@ class Sealant(Vision, EasyResource):
         """
         self.logger.info("Reconfiguring Sealant service")
 
+        if "draw_contours" in config.attributes.fields:
+            self.draw_contours = config.attributes.fields["draw_contours"].string_value
+            if self.draw_contours in ["reference", "detected", "both"]:
+                self.logger.info(f"Drawing {self.draw_contours} contours on the image")
+        else:
+            self.draw_contours = ""
+            self.logger.info("Not drawing contours on the image")
+
+        if "max_contours" in config.attributes.fields:
+            self.max_contours = int(
+                config.attributes.fields["max_contours"].number_value
+            )
+            self.logger.info(f"Max number of contours: {self.max_contours}")
+
+        if "min_area" in config.attributes.fields:
+            self.min_area = int(config.attributes.fields["min_area"].number_value)
+            self.logger.info(f"Min area of contours: {self.min_area}")
+        else:
+            self.min_area = 0
+
+        if "max_area" in config.attributes.fields:
+            self.max_area = int(config.attributes.fields["max_area"].number_value)
+            self.logger.info(f"Max area of contours: {self.max_area}")
+        else:
+            self.max_area = 0
+
+        if "min_width" in config.attributes.fields:
+            self.min_width = int(config.attributes.fields["min_width"].number_value)
+            self.logger.info(f"Min width of contours: {self.min_width}")
+        else:
+            self.min_width = 0
+
+        if "max_width" in config.attributes.fields:
+            self.max_width = int(config.attributes.fields["max_width"].number_value)
+            self.logger.info(f"Max width of contours: {self.max_width}")
+        else:
+            self.max_width = 0
+
+        if "min_height" in config.attributes.fields:
+            self.min_height = int(config.attributes.fields["min_height"].number_value)
+            self.logger.info(f"Min height of contours: {self.min_height}")
+        else:
+            self.min_height = 0
+
+        if "max_height" in config.attributes.fields:
+            self.max_height = int(config.attributes.fields["max_height"].number_value)
+            self.logger.info(f"Max height of contours: {self.max_height}")
+        else:
+            self.max_height = 0
         # Load the reference contours from the pickle file
         # catch if no file is found
         self.ref_contours = None
         try:
             with open("contours.pickle", "rb") as f:
-                self.ref_contours = pickle.load(f)
+                self.ref_contours: List[ViamContour] = pickle.load(f)
                 self.logger.info(f"{len(self.ref_contours)} reference contours loaded")
         except FileNotFoundError:
+            self.ref_contours = []
             self.logger.info("No reference contours found, showing detected contours")
         # Store the dependencies for later use
         self.dependencies = dependencies
@@ -99,25 +216,49 @@ class Sealant(Vision, EasyResource):
             raise ViamError(
                 f"Requested camera {camera_name} is not listed in dependencies"
             )
-        result = CaptureAllResult()
+        result = CaptureAllResult(extra={}, detections=[])
         if isinstance(camera, CameraClient):
             image = await camera.get_image()
             pil_image = viam_to_pil_image(image)
-            (contours, detections) = find_contours(pil_image)
-            # Draw the detected contours on the image if no reference contours are provided
-            if self.ref_contours is None or len(self.ref_contours) == 0:
-                img = draw_contours(pil_image, contours)
-                result.image = pil_to_viam_image(img, image.mime_type)
+            contours = find_contours(
+                pil_image,
+                min_area=self.min_area,
+                max_area=self.max_area,
+                max_contours=self.max_contours,
+                min_width=self.min_width,
+                max_width=self.max_width,
+                min_height=self.min_height,
+                max_height=self.max_height,
+            )
+            # TODO: Add the opencv contours to the extra field if needed
+            # result.extra["cv_contours"] = contour_to_dict(res_contours)
+            # Compare contours with reference contours
+            if len(self.ref_contours) > 0 and len(contours) > 0:
+                res_contours = compare_hausdorff(self.ref_contours, contours)
+                # extract the hausdorff distances from the result list and add them to the extra field
+                result.extra["contours"] = [
+                    {"area": ctr.area, "hausdorff": ctr.hausdorff}
+                    for ctr in res_contours
+                ]
             else:
-                # Draw the reference contours on the image
-                pil_image = draw_contours(pil_image, self.ref_contours, (255, 0, 255))
-                result.image = pil_to_viam_image(pil_image, image.mime_type)
-            # Return the bounding boxes of the contours
-            result.detections = detections
-            # Return the contours as extra information
-            result.extra = {
-                "contours": [contour_to_dict(contour) for contour in contours]
-            }
+                result.extra["contours"] = [{"area": ctr.area} for ctr in contours]
+                self.logger.info("No reference contours found")
+
+            # Draw the detected or reference contours on the image. Default is none.
+            if self.draw_contours == "detected" and len(contours) > 0:
+                pil_image = draw_contours(pil_image, contours, (0, 0, 255))
+            if self.draw_contours == "reference" and len(self.ref_contours) > 0:
+                pil_image = draw_contours(pil_image, self.ref_contours, (0, 255, 0))
+            if self.draw_contours == "both":
+                if len(contours) > 0:
+                    pil_image = draw_contours(pil_image, contours, (0, 0, 255))
+                if len(self.ref_contours) > 0:
+                    pil_image = draw_contours(pil_image, self.ref_contours, (0, 255, 0))
+            result.image = pil_to_viam_image(pil_image, image.mime_type)
+
+            # Add the contours bounding boxes to the result.detections
+            for ctr in contours:
+                result.detections.append(ctr.detection)
         else:
             raise ViamError(
                 f"Requested camera {camera_name} is not a valid CameraClient"
@@ -151,7 +292,19 @@ class Sealant(Vision, EasyResource):
         timeout: Optional[float] = None,
     ) -> List[Detection]:
         # Return the bounding boxes of the contours
-        (_, detections) = find_contours(image)
+        contours = find_contours(
+            viam_to_pil_image(image),
+            min_area=self.min_area,
+            max_area=self.max_area,
+            max_contours=self.max_contours,
+            min_width=self.min_width,
+            max_width=self.max_width,
+            min_height=self.min_height,
+            max_height=self.max_height,
+        )
+        detections: List[Detection] = []
+        for ctr in contours:
+            detections.append(ctr["detection"])
         return detections
 
     async def get_classifications_from_camera(
@@ -213,11 +366,22 @@ class Sealant(Vision, EasyResource):
             if isinstance(camera, CameraClient):
                 image = await camera.get_image()
                 pil_image = viam_to_pil_image(image)
-                (contours, _) = find_contours(pil_image)
+                contours = find_contours(
+                    pil_image,
+                    min_area=self.min_area,
+                    max_area=self.max_area,
+                    max_contours=self.max_contours,
+                    min_width=self.min_width,
+                    max_width=self.max_width,
+                    min_height=self.min_height,
+                    max_height=self.max_height,
+                )
                 save_contours(contours, "contours.pickle")
                 # pil_image = draw_contours(pil_image, contours)
                 self.ref_contours = contours
-                return {"result": f"{len(contours)} contours loaded and saved to file"}
+                return {
+                    "result": f"{len(contours)} contours saved to file and loaded as reference"
+                }
             else:
                 raise ViamError(
                     f"Requested camera {command["camera_name"]} is not a valid CameraClient"
