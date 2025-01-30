@@ -19,7 +19,13 @@ from viam.errors import ViamError
 from viam.media.utils.pil import viam_to_pil_image, pil_to_viam_image
 
 
-from .contours import find_contours, save_contours, draw_contours, contour_to_dict
+from .contours import (
+    find_contours,
+    save_contours,
+    draw_contours,
+    contour_to_dict,
+    compare_contours,
+)
 
 
 class Sealant(Vision, EasyResource):
@@ -56,6 +62,18 @@ class Sealant(Vision, EasyResource):
         Returns:
             Sequence[str]: A list of implicit dependencies
         """
+
+        # Check if draw_contours is set to string in config
+        if "draw_contours" in config.attributes.fields:
+            if not config.attributes.fields["draw_contours"].HasField("string_value"):
+                raise Exception("draw_contours must be a string.")
+            draw_contours = config.attributes.fields["draw_contours"].string_value
+            # Check if draw_contours is not set to reference or detected or both
+            if not draw_contours in ["reference", "detected", "both"]:
+                raise Exception(
+                    "draw_contours must be set to reference, detected or both"
+                )
+
         return []
 
     def reconfigure(
@@ -68,6 +86,14 @@ class Sealant(Vision, EasyResource):
             dependencies (Mapping[ResourceName, ResourceBase]): Any dependencies (both implicit and explicit)
         """
         self.logger.info("Reconfiguring Sealant service")
+
+        if "draw_contours" in config.attributes.fields:
+            self.draw_contours = config.attributes.fields["draw_contours"].string_value
+            if self.draw_contours in ["reference", "detected", "both"]:
+                self.logger.info(f"Drawing {self.draw_contours} contours on the image")
+        else:
+            self.draw_contours = ""
+            self.logger.info("Not drawing contours on the image")
 
         # Load the reference contours from the pickle file
         # catch if no file is found
@@ -100,24 +126,38 @@ class Sealant(Vision, EasyResource):
                 f"Requested camera {camera_name} is not listed in dependencies"
             )
         result = CaptureAllResult()
+        result.extra = {}
         if isinstance(camera, CameraClient):
             image = await camera.get_image()
             pil_image = viam_to_pil_image(image)
             (contours, detections) = find_contours(pil_image)
-            # Draw the detected contours on the image if no reference contours are provided
-            if self.ref_contours is None or len(self.ref_contours) == 0:
-                img = draw_contours(pil_image, contours)
-                result.image = pil_to_viam_image(img, image.mime_type)
+            # Compare contours with reference contours
+            if len(self.ref_contours) > 0 and len(contours) > 0:
+                res = compare_contours(self.ref_contours, contours)
+                result.extra["hausdorff"] = res
+                self.logger.info(f"Hausdorff distance: {res}")
             else:
-                # Draw the reference contours on the image
-                pil_image = draw_contours(pil_image, self.ref_contours, (255, 0, 255))
-                result.image = pil_to_viam_image(pil_image, image.mime_type)
+                result.extra["hausdorff"] = None
+                self.logger.info("No reference contours found")
+
+            # Draw the detected or reference contours on the image. Default is none.
+            if self.draw_contours == "detected" and len(contours) > 0:
+                pil_image = draw_contours(pil_image, contours, (0, 0, 255))
+            if self.draw_contours == "reference" and len(self.ref_contours) > 0:
+                pil_image = draw_contours(pil_image, self.ref_contours, (0, 255, 0))
+            if self.draw_contours == "both":
+                if len(contours) > 0:
+                    pil_image = draw_contours(pil_image, contours, (0, 0, 255))
+                if len(self.ref_contours) > 0:
+                    pil_image = draw_contours(pil_image, self.ref_contours, (0, 255, 0))
+            result.image = pil_to_viam_image(pil_image, image.mime_type)
+
             # Return the bounding boxes of the contours
             result.detections = detections
             # Return the contours as extra information
-            result.extra = {
-                "contours": [contour_to_dict(contour) for contour in contours]
-            }
+            result.extra["contours"] = [
+                contour_to_dict(contour) for contour in contours
+            ]
         else:
             raise ViamError(
                 f"Requested camera {camera_name} is not a valid CameraClient"
@@ -217,7 +257,9 @@ class Sealant(Vision, EasyResource):
                 save_contours(contours, "contours.pickle")
                 # pil_image = draw_contours(pil_image, contours)
                 self.ref_contours = contours
-                return {"result": f"{len(contours)} contours loaded and saved to file"}
+                return {
+                    "result": f"{len(contours)} contours saved to file and loaded as reference"
+                }
             else:
                 raise ViamError(
                     f"Requested camera {command["camera_name"]} is not a valid CameraClient"

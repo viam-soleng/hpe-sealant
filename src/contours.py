@@ -1,10 +1,9 @@
-from typing import Any, ClassVar, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import cv2
 from cv2.typing import MatLike
 import numpy as np
 import pickle
-from viam.media.video import ViamImage
-from viam.proto.service.vision import Classification, Detection
+from viam.proto.service.vision import Detection
 from PIL import Image
 
 
@@ -123,3 +122,30 @@ def opencv_to_pil(np_image: np.ndarray) -> Image.Image:
     pil_image = Image.fromarray(np_image)
 
     return pil_image
+
+
+def compare_contours(
+    ref_contours: List[np.ndarray], det_contours: List[np.ndarray]
+) -> Dict[str, float]:
+    """This function compares the reference contours with the detected contours using Hausdorff distance.
+    This metric measures the maximum distance between any point on one contour and the closest point on the other contour.
+    It is useful for assessing the overall dissimilarity between shapes, even if they have slight variations in form.
+
+    Args:
+        ref_contours (List[np.ndarray]): The reference contours
+        det_contours (List[np.ndarray]): The detected contours
+    """
+
+    # Create Hausdorff distance extractor
+    hausdorff_dist = cv2.createHausdorffDistanceExtractor()
+
+    results = []
+    for ref_idx, ref_contour in enumerate(ref_contours):
+        for det_idx, det_contour in enumerate(det_contours):
+            # Compute the Hausdorff distance between the reference and detected contours
+            distance = hausdorff_dist.computeDistance(ref_contour, det_contour)
+            results.append(
+                {"ref_cont": ref_idx, "det_contour": det_idx, "distance": distance}
+            )
+
+    return results
