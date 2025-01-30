@@ -62,7 +62,7 @@ def find_contours(
         viam_contours.append(vctr)
 
     return viam_contours
-
+  
 
 def draw_contours(
     image: Image,

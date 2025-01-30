@@ -4,7 +4,7 @@ import os
 from typing import Any, ClassVar, List, Mapping, Optional, Sequence
 
 from typing_extensions import Self
-from viam.media.video import ViamImage
+from viam.media.video import ViamImage, CameraMimeType
 from viam.module.module import Module
 from viam.proto.app.robot import ComponentConfig
 from viam.proto.common import PointCloudObject, ResourceName
@@ -17,7 +17,6 @@ from viam.utils import ValueTypes
 from viam.components.camera import CameraClient
 from viam.errors import ViamError
 from viam.media.utils.pil import viam_to_pil_image, pil_to_viam_image
-
 
 from .contours import (
     find_contours,
@@ -186,7 +185,6 @@ class Sealant(Vision, EasyResource):
             self.logger.info(f"Max height of contours: {self.max_height}")
         else:
             self.max_height = 0
-
         # Load the reference contours from the pickle file
         # catch if no file is found
         self.ref_contours = None
