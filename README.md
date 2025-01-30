@@ -2,7 +2,7 @@
 
 This module uses OpenCV contour features to detect such, filter and compare them. For example you could use this module to store reference contours and then use other images to find the same contours and compare them to the stored references.
 
-## Model hpe-automotive:sealant-check:sealant"
+## Model "hpe-automotive:sealant-check:sealant"
 
 This module implements a Viam `VisionService`.
 
