@@ -15,6 +15,7 @@ class ViamContour:
 
     contour: Sequence[MatLike]
     area: float
+    arclenght: Optional[float]
     hausdorff: Optional[Dict[str, float]]
     detection: Optional[Detection]
 
@@ -56,6 +57,7 @@ def find_contours(
         vctr = ViamContour(
             contour=ctraw,
             area=cv2.contourArea(ctraw),
+            arclenght=cv2.arcLength(ctraw, True),
             detection=contour_to_detection(ctraw),
             hausdorff={},
         )
@@ -95,10 +97,31 @@ def save_contours(contours: List[ViamContour], filename: str) -> None:
         filename (str): The filename to save the contour to
     """
     for contour in contours:
-        # Clear the detection field before saving
+        # Clear the detection field before saving as Detection is not serializable
         contour.detection = None
     with open(filename, "wb") as f:
         pickle.dump(contours, f)
+
+
+def load_contours(filename: str) -> List[ViamContour]:
+    """This function loads the contour from a file.
+
+    Args:
+        filename (str): The filename to load the contour from
+
+    Returns:
+        ViamContour: The loaded contour
+    """
+    contours: List[ViamContour] = []
+    try:
+        with open(filename, "rb") as f:
+            contours: List[ViamContour] = pickle.load(f)
+        for contour in contours:
+            # Restore the detection field after loading
+            contour.detection = contour_to_detection(contour)
+    except:
+        pass
+    return contours
 
 
 def pil_to_opencv(pil_image: Image.Image) -> np.ndarray:

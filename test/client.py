@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 
 import cv2
@@ -9,7 +10,6 @@ from typing import Any, Dict
 
 import os
 from dotenv import load_dotenv
-from pprint import pprint
 
 # loading variables from .env file
 load_dotenv()
@@ -24,6 +24,7 @@ async def connect():
 
 
 def dict_to_contour(array_dict: Dict[str, Any]) -> np.ndarray:
+    """Converts the dictionary representation of contours to a numpy array."""
     dtype = np.dtype(array_dict["dtype"])
     shape = tuple(int(dim) for dim in array_dict["shape"])
     data = np.array(array_dict["data"], dtype=dtype).reshape(shape)
@@ -31,31 +32,42 @@ def dict_to_contour(array_dict: Dict[str, Any]) -> np.ndarray:
 
 
 async def main():
+
+    # Argument parsing
+    parser = argparse.ArgumentParser(description="Process some contours")
+    parser.add_argument("--cmd", type=str, help="Command to execute")
+    args = parser.parse_args()
+
+    # Connect to Viam machine
     machine = await connect()
-
-    # Call the contour detection vision service "vision-sealant" on the robot
+    # Get the vision client for the "vision-sealant" service
     vision_sealant = VisionClient.from_robot(machine, "vision-sealant")
-    result = await vision_sealant.capture_all_from_camera(
-        "sealant-big", return_image=True, return_detections=True
-    )
-    # Extract opencv contours from the result
-    # cv_contours = [dict_to_contour(contour) for contour in result.extra["cv_contours"]]
-    print(f"Number of contours detected: {len(result.extra['contours'])}")
-    image = viam_to_pil_image(result.image)
-    np_image = cv2.cvtColor(np.array(image), cv2.COLOR_BGR2RGB)
-    # cv2.imshow("image", np.array(np_image))
-    # Display raw image for 5 seconds
-    # cv2.waitKey(5000)
-    # cv2.drawContours(np_image, contours, -1, (0, 255, 0), 3)
-    # cv2.imshow("image", np.array(np_image))
-    # Display image with contours for 5 seconds
-    # cv2.waitKey(5000)
-
-    print("Hausdorff distance between reference contours and detected contours:")
-    pprint(result.extra)
-
-    pprint(result.detections)
-
+    # Depending on command line argument, execute different commands
+    if args.cmd == "save":
+        result = await vision_sealant.do_command(
+            {"command": "save_contours", "camera_name": "sealant-ref"}
+        )
+        print(result)
+    elif args.cmd == "delete":
+        result = await vision_sealant.do_command({"command": "delete_contours"})
+        print(result)
+    elif args.cmd == "compare":
+        result = await vision_sealant.capture_all_from_camera(
+            "sealant-ref", return_image=True, return_detections=True
+        )
+        # print(f"# of contours detected: {len(result.detections)}")
+        print("\n")
+        print(f"Viam Detections:")
+        print(f"{result.detections}")
+        print("\n")
+        for idx, ctr in enumerate(result.extra["contours"]):
+            print(f"Contour {idx}:")
+            print(f"Area: {ctr['area']}")
+            print(f"ArcLength: {ctr['arclength']}")
+            print(f"Hausdorff distances: {ctr['hausdorff']}")
+            print("\n")
+    else:
+        print("Choose a valid command: save, delete, compare")
     # Don't forget to close the machine when you're done!
     await machine.close()
 
