@@ -118,7 +118,7 @@ def load_contours(filename: str) -> List[ViamContour]:
             contours: List[ViamContour] = pickle.load(f)
         for contour in contours:
             # Restore the detection field after loading
-            contour.detection = contour_to_detection(contour)
+            contour.detection = contour_to_detection(contour.contour)
     except:
         pass
     return contours

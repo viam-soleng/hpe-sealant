@@ -248,15 +248,14 @@ class Sealant(Vision, EasyResource):
                     }
                     for ctr in contours
                 ]
-            self.logger.info(f"# Reference Contours: {len(self.ref_contours)}")
-            self.logger.info(f"Reference Contours: \n{self.ref_contours}")
+            # self.logger.info(f"# Reference Contours: {len(self.ref_contours)}")
+            # self.logger.info(f"Reference Contours: \n{self.ref_contours}")
             # Draw the detected or reference contours on the image. Default is none.
             if (
                 self.draw_contours == "detected" or self.draw_contours == "both"
             ) and len(contours) > 0:
                 pil_image = draw_contours(pil_image, contours, (0, 0, 255))
                 # Add the contours bounding boxes to the result.detections
-                self.logger.info(f"# Detected Contours: {contours}")
                 for det_idx, ctr in enumerate(contours):
                     det = ctr.detection
                     det.class_name = f"detected_{det_idx}"
@@ -389,9 +388,9 @@ class Sealant(Vision, EasyResource):
                     min_height=self.min_height,
                     max_height=self.max_height,
                 )
+                self.ref_contours = contours
                 save_contours(contours, "contours.pickle")
                 # pil_image = draw_contours(pil_image, contours)
-                self.ref_contours = contours
                 return {
                     "result": f"{len(contours)} contours saved to file and loaded as reference"
                 }
