@@ -395,7 +395,7 @@ class Sealant(Vision, EasyResource):
                 save_contours(contours, "contours.pickle")
                 # pil_image = draw_contours(pil_image, contours)
                 return {
-                    "result": f"{len(contours)} contours saved to file and loaded as reference"
+                    "result": f"{len(contours)} contours saved to file"
                 }
             else:
                 raise ViamError(
