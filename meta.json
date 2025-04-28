@@ -8,9 +8,21 @@
     {
       "api": "rdk:service:vision",
       "model": "hpe-automotive:sealant-check:sealant",
-      "markdown_link": "README.md#model-hpe-automotivesealant-checksealant"
+      "markdown_link": "README.md#model-hpe-automotivesealant-checksealant",
+      "short_description": "Uses OpenCV to detect contours and compare them to a reference image."
     }
   ],
-  "entrypoint": "./run.sh",
-  "first_run": ""
+  "markdown_link": "README.md",
+  "entrypoint": "dist/main",
+  "first_run": "",
+  "build": {
+    "build": "./build.sh",
+    "setup": "./setup.sh",
+    "path": "dist/archive.tar.gz",
+    "arch": [
+      "linux/amd64",
+      "linux/arm64",
+      "darwin/arm64"
+    ]
+  }
 }

@@ -18,11 +18,13 @@ from viam.components.camera import CameraClient
 from viam.errors import ViamError
 from viam.media.utils.pil import viam_to_pil_image, pil_to_viam_image
 
-from .contours import (
+from src.contours import (
     find_contours,
+    load_contours,
     save_contours,
     draw_contours,
     contour_to_dict,
+    contour_to_detection,
     compare_hausdorff,
     ViamContour,
 )
@@ -34,22 +36,6 @@ class Sealant(Vision, EasyResource):
     )
 
     dependencies: Mapping[ResourceName, ResourceBase]
-
-    @classmethod
-    def new(
-        cls, config: ComponentConfig, dependencies: Mapping[ResourceName, ResourceBase]
-    ) -> Self:
-        """This method creates a new instance of this Vision service.
-        The default implementation sets the name from the `config` parameter and then calls `reconfigure`.
-
-        Args:
-            config (ComponentConfig): The configuration for this resource
-            dependencies (Mapping[ResourceName, ResourceBase]): The dependencies (both implicit and explicit)
-
-        Returns:
-            Self: The resource
-        """
-        return super().new(config, dependencies)
 
     @classmethod
     def validate_config(cls, config: ComponentConfig) -> Sequence[str]:
@@ -125,6 +111,22 @@ class Sealant(Vision, EasyResource):
 
         return []
 
+    @classmethod
+    def new(
+        cls, config: ComponentConfig, dependencies: Mapping[ResourceName, ResourceBase]
+    ) -> Self:
+        """This method creates a new instance of this Vision service.
+        The default implementation sets the name from the `config` parameter and then calls `reconfigure`.
+
+        Args:
+            config (ComponentConfig): The configuration for this resource
+            dependencies (Mapping[ResourceName, ResourceBase]): The dependencies (both implicit and explicit)
+
+        Returns:
+            Self: The resource
+        """
+        return super().new(config, dependencies)
+
     def reconfigure(
         self, config: ComponentConfig, dependencies: Mapping[ResourceName, ResourceBase]
     ):
@@ -186,18 +188,10 @@ class Sealant(Vision, EasyResource):
         else:
             self.max_height = 0
         # Load the reference contours from the pickle file
-        # catch if no file is found
-        self.ref_contours = None
-        try:
-            with open("contours.pickle", "rb") as f:
-                self.ref_contours: List[ViamContour] = pickle.load(f)
-                self.logger.info(f"{len(self.ref_contours)} reference contours loaded")
-        except FileNotFoundError:
-            self.ref_contours = []
-            self.logger.info("No reference contours found, showing detected contours")
+        self.ref_contours = load_contours("contours.pickle")
         # Store the dependencies for later use
         self.dependencies = dependencies
-        return super().reconfigure(config, dependencies)
+        return
 
     async def capture_all_from_camera(
         self,
@@ -216,7 +210,8 @@ class Sealant(Vision, EasyResource):
             raise ViamError(
                 f"Requested camera {camera_name} is not listed in dependencies"
             )
-        result = CaptureAllResult(extra={}, detections=[])
+        result = CaptureAllResult(detections=[], extra={})
+        contours: List[ViamContour] = []
         if isinstance(camera, CameraClient):
             image = await camera.get_image()
             pil_image = viam_to_pil_image(image)
@@ -237,28 +232,46 @@ class Sealant(Vision, EasyResource):
                 res_contours = compare_hausdorff(self.ref_contours, contours)
                 # extract the hausdorff distances from the result list and add them to the extra field
                 result.extra["contours"] = [
-                    {"area": ctr.area, "hausdorff": ctr.hausdorff}
+                    {
+                        "area": ctr.area,
+                        "hausdorff": ctr.hausdorff,
+                        "arclength": ctr.arclenght,
+                    }
                     for ctr in res_contours
                 ]
             else:
-                result.extra["contours"] = [{"area": ctr.area} for ctr in contours]
-                self.logger.info("No reference contours found")
-
+                result.extra["contours"] = [
+                    {
+                        "area": ctr.area,
+                        "arclength": ctr.arclenght,
+                        "hausdorff": "no reference contour",
+                    }
+                    for ctr in contours
+                ]
+            # self.logger.info(f"# Reference Contours: {len(self.ref_contours)}")
+            # self.logger.info(f"Reference Contours: \n{self.ref_contours}")
             # Draw the detected or reference contours on the image. Default is none.
-            if self.draw_contours == "detected" and len(contours) > 0:
+            if (
+                self.draw_contours == "detected" or self.draw_contours == "both"
+            ) and len(contours) > 0:
                 pil_image = draw_contours(pil_image, contours, (0, 0, 255))
-            if self.draw_contours == "reference" and len(self.ref_contours) > 0:
+                # Add the contours bounding boxes to the result.detections
+                for det_idx, ctr in enumerate(contours):
+                    det = ctr.detection
+                    det.class_name = f"detected_{det_idx}"
+                    result.detections.append(det)
+            if (
+                self.draw_contours == "reference" or self.draw_contours == "both"
+            ) and len(self.ref_contours) > 0:
                 pil_image = draw_contours(pil_image, self.ref_contours, (0, 255, 0))
-            if self.draw_contours == "both":
-                if len(contours) > 0:
-                    pil_image = draw_contours(pil_image, contours, (0, 0, 255))
-                if len(self.ref_contours) > 0:
-                    pil_image = draw_contours(pil_image, self.ref_contours, (0, 255, 0))
+                # Add the contours bounding boxes to the result.detections
+                for ref_idx, ref_ctr in enumerate(self.ref_contours):
+                    ref_det = ref_ctr.detection
+                    # TODO: For some reason this becomes NULL when saving new contours
+                    ref_det.class_name = f"reference_{ref_idx}"
+                    result.detections.append(ref_det)
             result.image = pil_to_viam_image(pil_image, image.mime_type)
 
-            # Add the contours bounding boxes to the result.detections
-            for ctr in contours:
-                result.detections.append(ctr.detection)
         else:
             raise ViamError(
                 f"Requested camera {camera_name} is not a valid CameraClient"
@@ -361,7 +374,7 @@ class Sealant(Vision, EasyResource):
                 ]
             except KeyError:
                 raise ViamError(
-                    f"Requested camera {command["camera_name"]} is not listed in dependencies"
+                    f"Requested camera {command['camera_name']} is not listed in dependencies"
                 )
             if isinstance(camera, CameraClient):
                 image = await camera.get_image()
@@ -376,24 +389,24 @@ class Sealant(Vision, EasyResource):
                     min_height=self.min_height,
                     max_height=self.max_height,
                 )
+                self.ref_contours = contours.copy()
                 save_contours(contours, "contours.pickle")
                 # pil_image = draw_contours(pil_image, contours)
-                self.ref_contours = contours
                 return {
                     "result": f"{len(contours)} contours saved to file and loaded as reference"
                 }
             else:
                 raise ViamError(
-                    f"Requested camera {command["camera_name"]} is not a valid CameraClient"
+                    f"Requested camera {command['camera_name']} is not a valid CameraClient"
                 )
         if command["command"] == "delete_contours":
             self.logger.info("delete_contours: %s", command)
             if os.path.exists("contours.pickle"):
                 os.remove("contours.pickle")
+                self.ref_contours: List[ViamContour] = []
+                return {"result": "Reference contours deleted"}
             else:
-                self.logger.info("No reference contours file found")
-            self.ref_contours = None
-            return {"result": "Reference contours deleted"}
+                return {"result": "No reference contours file found"}
         raise ViamError(f"Unknown command {command}")
 
 
