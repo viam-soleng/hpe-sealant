@@ -38,22 +38,6 @@ class Sealant(Vision, EasyResource):
     dependencies: Mapping[ResourceName, ResourceBase]
 
     @classmethod
-    def new(
-        cls, config: ComponentConfig, dependencies: Mapping[ResourceName, ResourceBase]
-    ) -> Self:
-        """This method creates a new instance of this Vision service.
-        The default implementation sets the name from the `config` parameter and then calls `reconfigure`.
-
-        Args:
-            config (ComponentConfig): The configuration for this resource
-            dependencies (Mapping[ResourceName, ResourceBase]): The dependencies (both implicit and explicit)
-
-        Returns:
-            Self: The resource
-        """
-        return super().new(config, dependencies)
-
-    @classmethod
     def validate_config(cls, config: ComponentConfig) -> Sequence[str]:
         """This method allows you to validate the configuration object received from the machine,
         as well as to return any implicit dependencies based on that `config`.
@@ -126,6 +110,22 @@ class Sealant(Vision, EasyResource):
                 raise Exception("max_height must be a positive number.")
 
         return []
+
+    @classmethod
+    def new(
+        cls, config: ComponentConfig, dependencies: Mapping[ResourceName, ResourceBase]
+    ) -> Self:
+        """This method creates a new instance of this Vision service.
+        The default implementation sets the name from the `config` parameter and then calls `reconfigure`.
+
+        Args:
+            config (ComponentConfig): The configuration for this resource
+            dependencies (Mapping[ResourceName, ResourceBase]): The dependencies (both implicit and explicit)
+
+        Returns:
+            Self: The resource
+        """
+        return super().new(config, dependencies)
 
     def reconfigure(
         self, config: ComponentConfig, dependencies: Mapping[ResourceName, ResourceBase]
