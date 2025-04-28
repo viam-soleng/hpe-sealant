@@ -18,7 +18,7 @@ from viam.components.camera import CameraClient
 from viam.errors import ViamError
 from viam.media.utils.pil import viam_to_pil_image, pil_to_viam_image
 
-from .contours import (
+from src.contours import (
     find_contours,
     load_contours,
     save_contours,
