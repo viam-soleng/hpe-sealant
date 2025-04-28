@@ -267,6 +267,7 @@ class Sealant(Vision, EasyResource):
                 # Add the contours bounding boxes to the result.detections
                 for ref_idx, ref_ctr in enumerate(self.ref_contours):
                     ref_det = ref_ctr.detection
+                    # TODO: For some reason this becomes NULL when saving new contours
                     ref_det.class_name = f"reference_{ref_idx}"
                     result.detections.append(ref_det)
             result.image = pil_to_viam_image(pil_image, image.mime_type)
@@ -373,7 +374,7 @@ class Sealant(Vision, EasyResource):
                 ]
             except KeyError:
                 raise ViamError(
-                    f"Requested camera {command["camera_name"]} is not listed in dependencies"
+                    f"Requested camera {command['camera_name']} is not listed in dependencies"
                 )
             if isinstance(camera, CameraClient):
                 image = await camera.get_image()
@@ -388,7 +389,7 @@ class Sealant(Vision, EasyResource):
                     min_height=self.min_height,
                     max_height=self.max_height,
                 )
-                self.ref_contours = contours
+                self.ref_contours = contours.copy()
                 save_contours(contours, "contours.pickle")
                 # pil_image = draw_contours(pil_image, contours)
                 return {
@@ -396,16 +397,16 @@ class Sealant(Vision, EasyResource):
                 }
             else:
                 raise ViamError(
-                    f"Requested camera {command["camera_name"]} is not a valid CameraClient"
+                    f"Requested camera {command['camera_name']} is not a valid CameraClient"
                 )
         if command["command"] == "delete_contours":
             self.logger.info("delete_contours: %s", command)
             if os.path.exists("contours.pickle"):
                 os.remove("contours.pickle")
+                self.ref_contours: List[ViamContour] = []
+                return {"result": "Reference contours deleted"}
             else:
-                self.logger.info("No reference contours file found")
-            self.ref_contours = []
-            return {"result": "Reference contours deleted"}
+                return {"result": "No reference contours file found"}
         raise ViamError(f"Unknown command {command}")
 
 
