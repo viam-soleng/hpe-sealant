@@ -204,6 +204,8 @@ class Sealant(Vision, EasyResource):
         extra: Optional[Mapping[str, Any]] = None,
         timeout: Optional[float] = None,
     ) -> CaptureAllResult:
+        # Load the reference contours from the pickle file
+        self.ref_contours = load_contours("contours.pickle")
         try:
             camera = self.dependencies[CameraClient.get_resource_name(camera_name)]
         except KeyError:
