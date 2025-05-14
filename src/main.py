@@ -231,6 +231,14 @@ class Sealant(Vision, EasyResource):
             # result.extra["cv_contours"] = contour_to_dict(res_contours)
             # Compare contours with reference contours
             if len(self.ref_contours) > 0 and len(contours) > 0:
+                result.extra["ref_contours"] = [
+                    {
+                        "area": rctr.area,
+                        "hausdorff": rctr.hausdorff,
+                        "arclength": rctr.arclenght,
+                    }
+                    for rctr in self.ref_contours
+                ]
                 res_contours = compare_hausdorff(self.ref_contours, contours)
                 # extract the hausdorff distances from the result list and add them to the extra field
                 result.extra["contours"] = [
@@ -394,9 +402,7 @@ class Sealant(Vision, EasyResource):
                 self.ref_contours = contours.copy()
                 save_contours(contours, "contours.pickle")
                 # pil_image = draw_contours(pil_image, contours)
-                return {
-                    "result": f"{len(contours)} contours saved to file"
-                }
+                return {"result": f"{len(contours)} contours saved to file"}
             else:
                 raise ViamError(
                     f"Requested camera {command['camera_name']} is not a valid CameraClient"
