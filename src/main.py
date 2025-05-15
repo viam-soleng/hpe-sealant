@@ -17,6 +17,8 @@ from viam.utils import ValueTypes
 from viam.components.camera import CameraClient
 from viam.errors import ViamError
 from viam.media.utils.pil import viam_to_pil_image, pil_to_viam_image
+from viam.utils import from_dm_from_extra
+from viam.errors import NoCaptureToStoreError
 
 from src.contours import (
     find_contours,
@@ -125,7 +127,10 @@ class Sealant(Vision, EasyResource):
         Returns:
             Self: The resource
         """
-        return super().new(config, dependencies)
+
+        vs = cls(config.name)
+        vs.reconfigure(config, dependencies)
+        return vs
 
     def reconfigure(
         self, config: ComponentConfig, dependencies: Mapping[ResourceName, ResourceBase]
@@ -137,6 +142,9 @@ class Sealant(Vision, EasyResource):
             dependencies (Mapping[ResourceName, ResourceBase]): Any dependencies (both implicit and explicit)
         """
         self.logger.info("Reconfiguring Sealant service")
+
+        # List for capture_all_from_camera
+        self.capture_all_queue: list = []
 
         if "draw_contours" in config.attributes.fields:
             self.draw_contours = config.attributes.fields["draw_contours"].string_value
@@ -204,6 +212,12 @@ class Sealant(Vision, EasyResource):
         extra: Optional[Mapping[str, Any]] = None,
         timeout: Optional[float] = None,
     ) -> CaptureAllResult:
+        # if data manager return result from queue if queue is not empty
+        if from_dm_from_extra(extra):
+            if len(self.capture_all_queue) > 0:
+                return self.capture_all_queue.pop(0)
+            else:
+                raise NoCaptureToStoreError()
         # Load the reference contours from the pickle file
         self.ref_contours = load_contours("contours.pickle")
         try:
@@ -286,6 +300,7 @@ class Sealant(Vision, EasyResource):
             raise ViamError(
                 f"Requested camera {camera_name} is not a valid CameraClient"
             )
+        self.capture_all_queue.append(result)
         return result
 
     async def get_detections_from_camera(
