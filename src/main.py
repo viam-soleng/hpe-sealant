@@ -19,6 +19,7 @@ from viam.errors import ViamError
 from viam.media.utils.pil import viam_to_pil_image, pil_to_viam_image
 from viam.utils import from_dm_from_extra
 from viam.errors import NoCaptureToStoreError
+from queue import Queue
 
 from src.contours import (
     find_contours,
@@ -143,8 +144,8 @@ class Sealant(Vision, EasyResource):
         """
         self.logger.info("Reconfiguring Sealant service")
 
-        # List for capture_all_from_camera
-        self.capture_all_queue: list = []
+        # Use a thread-safe queue to store capture_all_from_camera results
+        self.capture_all_queue: Queue = Queue()
 
         if "draw_contours" in config.attributes.fields:
             self.draw_contours = config.attributes.fields["draw_contours"].string_value
@@ -215,7 +216,7 @@ class Sealant(Vision, EasyResource):
         # if data manager return result from queue if queue is not empty
         if from_dm_from_extra(extra):
             if len(self.capture_all_queue) > 0:
-                return self.capture_all_queue.pop(0)
+                return self.capture_all_queue.get()
             else:
                 raise NoCaptureToStoreError()
         # Load the reference contours from the pickle file
@@ -300,7 +301,7 @@ class Sealant(Vision, EasyResource):
             raise ViamError(
                 f"Requested camera {camera_name} is not a valid CameraClient"
             )
-        self.capture_all_queue.append(result)
+        self.capture_all_queue.put(result)
         return result
 
     async def get_detections_from_camera(
