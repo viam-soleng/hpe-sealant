@@ -65,3 +65,12 @@ This module provides two `do_commands`, one for storing rerference contours and 
 }
 ```
 
+## Publish New Release
+
+The repository contains a git action which triggers on the following command:
+
+```
+git push origin --tag x.x.x
+```
+
+
