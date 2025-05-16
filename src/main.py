@@ -303,7 +303,9 @@ class Sealant(Vision, EasyResource):
             raise ViamError(
                 f"Requested camera {camera_name} is not a valid CameraClient"
             )
-        self.capture_all_cache.append({uuid.uuid1(): result})
+        id = str(uuid.uuid1())
+        self.capture_all_cache.append({id: result})
+        result.extra["id"] = id
         return result
 
     async def get_detections_from_camera(
