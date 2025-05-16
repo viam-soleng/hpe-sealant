@@ -215,7 +215,7 @@ class Sealant(Vision, EasyResource):
     ) -> CaptureAllResult:
         # if data manager return result from queue if queue is not empty
         if from_dm_from_extra(extra):
-            if len(self.capture_all_queue) > 0:
+            if not self.capture_all_queue.empty():
                 return self.capture_all_queue.get()
             else:
                 raise NoCaptureToStoreError()
