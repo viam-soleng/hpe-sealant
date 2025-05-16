@@ -1,10 +1,9 @@
 import asyncio
-import pickle
 import os
-from typing import Any, ClassVar, List, Mapping, Optional, Sequence
+from typing import Any, ClassVar, Deque, List, Mapping, Optional, Sequence
 
 from typing_extensions import Self
-from viam.media.video import ViamImage, CameraMimeType
+from viam.media.video import ViamImage
 from viam.module.module import Module
 from viam.proto.app.robot import ComponentConfig
 from viam.proto.common import PointCloudObject, ResourceName
@@ -20,14 +19,15 @@ from viam.media.utils.pil import viam_to_pil_image, pil_to_viam_image
 from viam.utils import from_dm_from_extra
 from viam.errors import NoCaptureToStoreError
 from queue import Queue
+from collections import deque
+from typing import Dict
+import uuid
 
 from src.contours import (
     find_contours,
     load_contours,
     save_contours,
     draw_contours,
-    contour_to_dict,
-    contour_to_detection,
     compare_hausdorff,
     ViamContour,
 )
@@ -144,7 +144,9 @@ class Sealant(Vision, EasyResource):
         """
         self.logger.info("Reconfiguring Sealant service")
 
-        # Use a thread-safe queue to store capture_all_from_camera results
+        # Cache capture_all_from_camera results to be confirmed for upload
+        self.capture_all_cache: Deque[Dict[str, CaptureAllResult]] = deque(maxlen=10)
+        # Queue to store capture_all_from_camera results to be uploaded by data manager
         self.capture_all_queue: Queue = Queue()
 
         if "draw_contours" in config.attributes.fields:
@@ -301,7 +303,7 @@ class Sealant(Vision, EasyResource):
             raise ViamError(
                 f"Requested camera {camera_name} is not a valid CameraClient"
             )
-        self.capture_all_queue.put(result)
+        self.capture_all_cache.append({uuid.uuid1(): result})
         return result
 
     async def get_detections_from_camera(
@@ -431,6 +433,19 @@ class Sealant(Vision, EasyResource):
                 return {"result": "Reference contours deleted"}
             else:
                 return {"result": "No reference contours file found"}
+
+        if command["command"] == "upload_image":
+            self.logger.info("upload_image: %s", command)
+            if "img_id" not in command:
+                raise ViamError("Missing image id in command")
+            else:
+                img_id = command["img_id"]
+                for item in self.capture_all_cache:
+                    if img_id in item:
+                        self.capture_all_queue.put(item.get(img_id))
+                        return {"result": f"Image with id {img_id} marked for upload"}
+                self.logger.error(f"Image with id {img_id} not found in cache")
+                raise ViamError(f"Image with id {img_id} not found in cache")
         raise ViamError(f"Unknown command {command}")
 
 
