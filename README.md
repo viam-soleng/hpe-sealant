@@ -8,15 +8,6 @@ This module implements a Viam `VisionService`.
 
 ### Configuration
 
-The module works without configuration but limiting the detected contours is always recommended:
-
-```json
-{
-"draw_contours": "both",
-"max_contours": 10
-}
-```
-
 #### Attributes
 
 The following attributes are available for this model:
@@ -24,23 +15,25 @@ The following attributes are available for this model:
 | Name            | Type   | Inclusion | Description                                                                                           |
 | --------------- | ------ | --------- | ----------------------------------------------------------------------------------------------------- |
 | `draw_contours` | string | Optional  | Draws the available contours on the returned image ["reference", "detected", "both"]. Default is none |
-| `max_contours`  | int    | Optional  | Maximum number of contours processed                                                                  |
+| `max_contours`  | int    | Optional  | Maximum number of contours processed. Default or `0` is unlimited.                                    |
 | `min_area`      | float  | Optional  | Minimal contour area to be considered                                                                 |
 | `max_area`      | float  | Optional  | Maximal contour area to be considered                                                                 |
 | `min_height`    | int    | Optional  | Minimal contour height to be considered                                                               |
 | `max_height`    | int    | Optional  | Maximal contour height to be considered                                                               |
 | `min_width`     | int    | Optional  | Minimal contour width to be considered                                                                |
 | `max_width`     | int    | Optional  | Maximal contour width to be considered                                                                |
+| `bw_image`      | int    | Optional  | Return the thresholded image                                                                          |
+| `thresh_offset` | int    | Optional  | Adjust the Otshu threshold [internal formula: threshold = otsu-threshold - thresh_offset]             |
 
 #### Example Configuration
 
 ```json
 {
-"max_area": 3127349,
-"max_width": 2000,
-"draw_contours": "both",
-"max_contours": 10,
-"min_area": 1127349
+  "max_area": 3127349,
+  "max_width": 2000,
+  "draw_contours": "both",
+  "max_contours": 10,
+  "min_area": 1127349
 }
 ```
 
@@ -52,8 +45,8 @@ This module provides two `do_commands`, one for storing rerference contours and 
 
 ```json
 {
-"command": "save_contours",
-"camera_name":"sealant-ref"
+  "command": "save_contours",
+  "camera_name": "sealant-ref"
 }
 ```
 
@@ -61,7 +54,7 @@ This module provides two `do_commands`, one for storing rerference contours and 
 
 ```json
 {
-"command": "delete_contours"
+  "command": "delete_contours"
 }
 ```
 
@@ -72,5 +65,3 @@ The repository contains a git action which triggers on the following command:
 ```
 git push origin --tag x.x.x
 ```
-
-
