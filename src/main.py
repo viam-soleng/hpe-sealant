@@ -271,8 +271,20 @@ class Sealant(Vision, EasyResource):
                 max_height=self.max_height,
                 cfg_thresh=self.thresh_offset,
             )
-            # TODO: Add the opencv contours to the extra field if needed
-            # result.extra["cv_contours"] = contour_to_dict(res_contours)
+            # Add additional detected contours attributes to the extra field
+            result.extra["detected_contours"] = [
+                {
+                    "area": ctr.area,
+                    "width": ctr.width,
+                    "height": ctr.height,
+                    "arclength": ctr.arclenght,
+                }
+                for ctr in contours
+            ]
+            self.logger.debug(
+                f"Found {len(contours)} contours in the image: {result.extra['detected_contours']}"
+            )
+
             # Compare contours with reference contours
             if len(self.ref_contours) > 0 and len(contours) > 0:
                 result.extra["ref_contours"] = [
@@ -302,8 +314,6 @@ class Sealant(Vision, EasyResource):
                     }
                     for ctr in contours
                 ]
-            # self.logger.info(f"# Reference Contours: {len(self.ref_contours)}")
-            # self.logger.info(f"Reference Contours: \n{self.ref_contours}")
             # Draw the detected or reference contours on the image. Default is none.
             if self.bw_image:
                 pil_image = bw_image

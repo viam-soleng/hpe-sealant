@@ -16,6 +16,8 @@ class ViamContour:
     contour: Sequence[MatLike]
     area: float
     arclenght: Optional[float]
+    width: int
+    height: int
     hausdorff: Optional[Dict[str, float]]
     detection: Optional[Detection]
 
@@ -51,6 +53,8 @@ def find_contours(
             contour=ctraw,
             area=cv2.contourArea(ctraw),
             arclenght=cv2.arcLength(ctraw, True),
+            width=cv2.boundingRect(ctraw)[2],
+            height=cv2.boundingRect(ctraw)[3],
             detection=contour_to_detection(ctraw),
             hausdorff={},
         )
@@ -72,7 +76,6 @@ def thresholding(image: np.ndarray, cfg_thresh: int) -> np.ndarray:
     if image.ndim == 3 and image.shape[2] == 3:
         gray_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     # Threshold the image to create a binary image (black and white)
-    # Create thresholded B/W image using Otsu's method
     # https://docs.opencv.org/4.x/d7/d4d/tutorial_py_thresholding.html
     blur = cv2.GaussianBlur(gray_image, (5, 5), 0)
     otsu_thresh, _ = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)

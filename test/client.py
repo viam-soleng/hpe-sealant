@@ -41,11 +41,11 @@ async def main():
     # Connect to Viam machine
     machine = await connect()
     # Get the vision client for the "vision-sealant" service
-    vision_sealant = VisionClient.from_robot(machine, "vision-sealant")
+    vision_sealant = VisionClient.from_robot(machine, "vision")
     # Depending on command line argument, execute different commands
     if args.cmd == "save":
         result = await vision_sealant.do_command(
-            {"command": "save_contours", "camera_name": "sealant-ref"}
+            {"command": "save_contours", "camera_name": "sealant-hpe"}
         )
         print(result)
     elif args.cmd == "delete":
@@ -53,7 +53,7 @@ async def main():
         print(result)
     elif args.cmd == "compare":
         result = await vision_sealant.capture_all_from_camera(
-            "sealant-ref", return_image=True, return_detections=True
+            "sealant", return_image=True, return_detections=True
         )
         # print(f"# of contours detected: {len(result.detections)}")
         print("\n")
@@ -66,6 +66,11 @@ async def main():
             print(f"ArcLength: {ctr['arclength']}")
             print(f"Hausdorff distances: {ctr['hausdorff']}")
             print("\n")
+    elif args.cmd == "detect":
+        result = await vision_sealant.capture_all_from_camera(
+            "sealant-hpe", return_image=False, return_detections=True
+        )
+        print(f"Extra: {result.extra}")
     else:
         print("Choose a valid command: save, delete, compare")
     # Don't forget to close the machine when you're done!
