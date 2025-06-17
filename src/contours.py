@@ -29,20 +29,13 @@ def find_contours(
     min_height: int,
     max_height: int,
     max_contours: int,
-) -> List[ViamContour]:
-    """This function finds contours in an image."""
+    cfg_thresh: int = 0,
+) -> Tuple[List[ViamContour], Image.Image]:
+    """This function finds contours in an image and returns the contours and the thresholded image."""
     np_image = pil_to_opencv(image)
-    # Convert RGB to BGR gray scale (OpenCV uses BGR by default)
-    if np_image.ndim == 3 and np_image.shape[2] == 3:
-        gray_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2GRAY)
-    # Threshold the image to create a binary image (black and white)
-    # Create thresholded B/W image using Otsu's method
-    # https://docs.opencv.org/4.x/d7/d4d/tutorial_py_thresholding.html
-    _, bw_image = cv2.threshold(gray_image, 127, 255, cv2.THRESH_OTSU)
-    # Invert the binary image (black becomes white and vice versa)
-    wb_image = cv2.bitwise_not(bw_image)
+    bw_image = thresholding(np_image, cfg_thresh)
     # Find the contours in the image
-    contours, _ = cv2.findContours(wb_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(bw_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     # Filter contours by width and height
     if min_width > 0 or min_height > 0 or max_width > 0 or max_height > 0:
         contours = filter_contours_by_width_height(
@@ -62,8 +55,32 @@ def find_contours(
             hausdorff={},
         )
         viam_contours.append(vctr)
+    return viam_contours, opencv_to_pil(cv2.cvtColor(bw_image, cv2.COLOR_GRAY2RGB))
 
-    return viam_contours
+
+def thresholding(image: np.ndarray, cfg_thresh: int) -> np.ndarray:
+    """This function applies a threshold to the image.
+
+    Args:
+        image (np.ndarray): The image to apply the threshold to
+        cfg_thresh (int): The threshold value
+
+    Returns:
+        np.ndarray: The thresholded image
+    """
+    # Convert RGB to BGR gray scale (OpenCV uses BGR by default)
+    if image.ndim == 3 and image.shape[2] == 3:
+        gray_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    # Threshold the image to create a binary image (black and white)
+    # Create thresholded B/W image using Otsu's method
+    # https://docs.opencv.org/4.x/d7/d4d/tutorial_py_thresholding.html
+    blur = cv2.GaussianBlur(gray_image, (5, 5), 0)
+    otsu_thresh, _ = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    adjusted_thresh = otsu_thresh - cfg_thresh
+    _, bw_image = cv2.threshold(blur, adjusted_thresh, 255, cv2.THRESH_BINARY)
+    # Invert the binary image (black becomes white and vice versa)
+    wb_image = cv2.bitwise_not(bw_image)
+    return wb_image
 
 
 def draw_contours(

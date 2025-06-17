@@ -111,7 +111,18 @@ class Sealant(Vision, EasyResource):
             max_height = config.attributes.fields["max_height"].number_value
             if not max_height >= 0:
                 raise Exception("max_height must be a positive number.")
-
+        if "thresh_offset" in config.attributes.fields:
+            if not config.attributes.fields["thresh_offset"].HasField("number_value"):
+                raise Exception("thresh_offset must be a number.")
+            thresh_offset = config.attributes.fields["thresh_offset"].number_value
+            if not isinstance(thresh_offset, int):
+                raise Exception("thresh_offset must be an integer.")
+        if "bw_image" in config.attributes.fields:
+            if not config.attributes.fields["bw_image"].HasField("bool_value"):
+                raise Exception("bw_image must be a boolean.")
+            bw_image = config.attributes.fields["bw_image"].bool_value
+            if not isinstance(bw_image, bool):
+                raise Exception("bw_image must be a boolean.")
         return []
 
     @classmethod
@@ -162,6 +173,9 @@ class Sealant(Vision, EasyResource):
                 config.attributes.fields["max_contours"].number_value
             )
             self.logger.info(f"Max number of contours: {self.max_contours}")
+        else:
+            self.max_contours = 0
+            self.logger.info("No max number of contours set, will return all contours")
 
         if "min_area" in config.attributes.fields:
             self.min_area = int(config.attributes.fields["min_area"].number_value)
@@ -198,8 +212,22 @@ class Sealant(Vision, EasyResource):
             self.logger.info(f"Max height of contours: {self.max_height}")
         else:
             self.max_height = 0
+
+        if "thresh_offset" in config.attributes.fields:
+            self.thresh_offset = int(
+                config.attributes.fields["thresh_offset"].number_value
+            )
+            self.logger.info(f"Adjust Otsu threshold by: {self.thresh_offset}")
+        else:
+            self.thresh_offset = 0
+        if "bw_image" in config.attributes.fields:
+            self.bw_image = config.attributes.fields["bw_image"].bool_value
+            self.logger.info(f"Returning black and white image: {self.bw_image}")
+        else:
+            self.bw_image = False
+            self.logger.info("Not returning black and white image")
         # Load the reference contours from the pickle file
-        self.ref_contours = load_contours("contours.pickle")
+        # self.ref_contours = load_contours("contours.pickle")
         # Store the dependencies for later use
         self.dependencies = dependencies
         return
@@ -234,7 +262,7 @@ class Sealant(Vision, EasyResource):
         if isinstance(camera, CameraClient):
             image = await camera.get_image()
             pil_image = viam_to_pil_image(image)
-            contours = find_contours(
+            contours, bw_image = find_contours(
                 pil_image,
                 min_area=self.min_area,
                 max_area=self.max_area,
@@ -243,6 +271,7 @@ class Sealant(Vision, EasyResource):
                 max_width=self.max_width,
                 min_height=self.min_height,
                 max_height=self.max_height,
+                cfg_thresh=self.thresh_offset,
             )
             # TODO: Add the opencv contours to the extra field if needed
             # result.extra["cv_contours"] = contour_to_dict(res_contours)
@@ -278,6 +307,9 @@ class Sealant(Vision, EasyResource):
             # self.logger.info(f"# Reference Contours: {len(self.ref_contours)}")
             # self.logger.info(f"Reference Contours: \n{self.ref_contours}")
             # Draw the detected or reference contours on the image. Default is none.
+            if self.bw_image:
+                pil_image = bw_image
+
             if (
                 self.draw_contours == "detected" or self.draw_contours == "both"
             ) and len(contours) > 0:
@@ -344,6 +376,7 @@ class Sealant(Vision, EasyResource):
             max_width=self.max_width,
             min_height=self.min_height,
             max_height=self.max_height,
+            cfg_thresh=self.thresh_offset,
         )
         detections: List[Detection] = []
         for ctr in contours:
@@ -418,6 +451,7 @@ class Sealant(Vision, EasyResource):
                     max_width=self.max_width,
                     min_height=self.min_height,
                     max_height=self.max_height,
+                    cfg_thresh=self.thresh_offset,
                 )
                 self.ref_contours = contours.copy()
                 save_contours(contours, "contours.pickle")
