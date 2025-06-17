@@ -271,8 +271,20 @@ class Sealant(Vision, EasyResource):
                 max_height=self.max_height,
                 cfg_thresh=self.thresh_offset,
             )
-            # TODO: Add the opencv contours to the extra field if needed
-            # result.extra["cv_contours"] = contour_to_dict(res_contours)
+            # Add additional detected contours attributes to the extra field
+            result.extra["detected_contours"] = [
+                {
+                    "area": ctr.area,
+                    "width": ctr.width,
+                    "height": ctr.height,
+                    "arclength": ctr.arclenght,
+                }
+                for ctr in contours
+            ]
+            self.logger.debug(
+                f"Found {len(contours)} contours in the image: {result.extra['detected_contours']}"
+            )
+
             # Compare contours with reference contours
             if len(self.ref_contours) > 0 and len(contours) > 0:
                 result.extra["ref_contours"] = [
@@ -302,8 +314,6 @@ class Sealant(Vision, EasyResource):
                     }
                     for ctr in contours
                 ]
-            # self.logger.info(f"# Reference Contours: {len(self.ref_contours)}")
-            # self.logger.info(f"Reference Contours: \n{self.ref_contours}")
             # Draw the detected or reference contours on the image. Default is none.
             if self.bw_image:
                 pil_image = bw_image
@@ -365,7 +375,7 @@ class Sealant(Vision, EasyResource):
         timeout: Optional[float] = None,
     ) -> List[Detection]:
         # Return the bounding boxes of the contours
-        contours = find_contours(
+        contours, _ = find_contours(
             viam_to_pil_image(image),
             min_area=self.min_area,
             max_area=self.max_area,
@@ -440,7 +450,7 @@ class Sealant(Vision, EasyResource):
             if isinstance(camera, CameraClient):
                 image = await camera.get_image()
                 pil_image = viam_to_pil_image(image)
-                contours = find_contours(
+                contours, _ = find_contours(
                     pil_image,
                     min_area=self.min_area,
                     max_area=self.max_area,
