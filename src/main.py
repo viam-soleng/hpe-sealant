@@ -115,8 +115,6 @@ class Sealant(Vision, EasyResource):
             if not config.attributes.fields["thresh_offset"].HasField("number_value"):
                 raise Exception("thresh_offset must be a number.")
             thresh_offset = config.attributes.fields["thresh_offset"].number_value
-            if not isinstance(thresh_offset, int):
-                raise Exception("thresh_offset must be an integer.")
         if "bw_image" in config.attributes.fields:
             if not config.attributes.fields["bw_image"].HasField("bool_value"):
                 raise Exception("bw_image must be a boolean.")
