@@ -37,6 +37,10 @@ The following attributes are available for this model:
 }
 ```
 
+#### Configuration Assistance
+
+If you configure debug logs for the vision service component (restart required), you will see the detected contours width, height, area and arclength in the logs!
+
 ### DoCommand
 
 This module provides two `do_commands`, one for storing rerference contours and the second one to delete the stored reference contours.
