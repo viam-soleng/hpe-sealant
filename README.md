@@ -23,7 +23,7 @@ The following attributes are available for this model:
 | `min_width`     | int    | Optional  | Minimal contour width to be considered                                                                |
 | `max_width`     | int    | Optional  | Maximal contour width to be considered                                                                |
 | `bw_image`      | int    | Optional  | Return the thresholded image                                                                          |
-| `thresh_offset` | int    | Optional  | Adjust the Otshu threshold [internal formula: threshold = otsu-threshold - thresh_offset]             |
+| `thresh_offset` | int    | Optional  | Adjust the Otsu threshold [internal formula: threshold = otsu-threshold - thresh_offset]             |
 
 #### Example Configuration
 
