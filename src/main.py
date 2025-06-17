@@ -365,7 +365,7 @@ class Sealant(Vision, EasyResource):
         timeout: Optional[float] = None,
     ) -> List[Detection]:
         # Return the bounding boxes of the contours
-        contours = find_contours(
+        contours, _ = find_contours(
             viam_to_pil_image(image),
             min_area=self.min_area,
             max_area=self.max_area,
@@ -440,7 +440,7 @@ class Sealant(Vision, EasyResource):
             if isinstance(camera, CameraClient):
                 image = await camera.get_image()
                 pil_image = viam_to_pil_image(image)
-                contours = find_contours(
+                contours, _ = find_contours(
                     pil_image,
                     min_area=self.min_area,
                     max_area=self.max_area,
