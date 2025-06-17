@@ -63,5 +63,6 @@ This module provides two `do_commands`, one for storing rerference contours and 
 The repository contains a git action which triggers on the following command:
 
 ```
+git tag x.x.x
 git push origin --tag x.x.x
 ```
