@@ -284,3 +284,64 @@ def contour_to_dict(contour: np.ndarray) -> Mapping[str, Any]:
     points = contour.tolist()
     contour_map = {"dtype": dtype, "shape": shape, "data": points}
     return contour_map
+
+
+def contours_min_distance(
+    c1: np.ndarray, c2: np.ndarray
+) -> Tuple[Tuple[int, int], Tuple[int, int], float]:
+    """Find the minimum distance between two contours and return the closest points.
+    Args:
+        c1 (np.ndarray): The first contour.
+        c2 (np.ndarray): The second contour.
+    Returns:
+        Tuple[Tuple[int, int], Tuple[int, int], float]: The closest points and the minimum distance.
+    """
+    chosen_point_c2 = None
+    chosen_point_c1 = None
+
+    for point in c1:
+        t = point[0][0], point[0][1]
+        index, dist = closest_point(t, c2[:, 0])
+        if dist[index] < min_dist:
+            min_dist = dist[index]
+            chosen_point_c2 = c2[index]
+            chosen_point_c1 = t
+    return chosen_point_c1, chosen_point_c2, min_dist
+
+
+def closest_point(point, array):
+    diff = array - point
+    distance = np.einsum("ij,ij->i", diff, diff)
+    return np.argmin(distance), distance
+
+
+def mark_defect(
+    image: Image.Image,
+    p1: Tuple[int, int],
+    p2: Tuple[int, int],
+    color: Tuple[int, int, int] = (255, 0, 0),
+) -> Image.Image:
+    """
+    Draws a circle to mark a defect on the given image between two points.
+
+    This function calculates the center and radius of a circle defined by two points (p1 and p2),
+    draws the circle on the image using the specified color, and returns the modified image.
+
+    Args:
+        image (Image.Image): The input PIL image on which to mark the defect.
+        p1 (Tuple[int, int]): The first point (x, y) defining the defect location.
+        p2 (Tuple[int, int]): The second point (x, y) defining the defect location.
+        color (Tuple[int, int, int], optional): The color of the circle in BGR format. Defaults to (255, 0, 0).
+
+    Returns:
+        Image.Image: The PIL image with the defect marked as a circle.
+    """
+
+    center = (
+        int((p1[0] + p2[0]) / 2),
+        int((p1[1] + p2[1]) / 2),
+    )
+    radius = int(np.linalg.norm(np.array(p1) - np.array(p2)))  # / 2)
+    np_image = pil_to_opencv(image)
+    cv2.circle(np_image, center, radius, color, 2)
+    return opencv_to_pil(np_image)
