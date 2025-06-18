@@ -286,9 +286,7 @@ def contour_to_dict(contour: np.ndarray) -> Mapping[str, Any]:
     return contour_map
 
 
-def contours_min_distance(
-    c1: np.ndarray, c2: np.ndarray
-) -> Tuple[Tuple[int, int], Tuple[int, int], float]:
+def contours_min_distance(image: Image.Image, c1: np.ndarray, c2: np.ndarray):
     """Find the minimum distance between two contours and return the closest points.
     Args:
         c1 (np.ndarray): The first contour.
@@ -296,15 +294,15 @@ def contours_min_distance(
     Returns:
         Tuple[Tuple[int, int], Tuple[int, int], float]: The closest points and the minimum distance.
     """
+    min_dist = max(image.width, image.height)
     chosen_point_c2 = None
     chosen_point_c1 = None
-
     for point in c1:
         t = point[0][0], point[0][1]
         index, dist = closest_point(t, c2[:, 0])
         if dist[index] < min_dist:
             min_dist = dist[index]
-            chosen_point_c2 = c2[index]
+            chosen_point_c2 = tuple(c2[index][0])
             chosen_point_c1 = t
     return chosen_point_c1, chosen_point_c2, min_dist
 
@@ -319,7 +317,6 @@ def mark_defect(
     image: Image.Image,
     p1: Tuple[int, int],
     p2: Tuple[int, int],
-    color: Tuple[int, int, int] = (255, 0, 0),
 ) -> Image.Image:
     """
     Draws a circle to mark a defect on the given image between two points.
@@ -336,12 +333,13 @@ def mark_defect(
     Returns:
         Image.Image: The PIL image with the defect marked as a circle.
     """
-
     center = (
         int((p1[0] + p2[0]) / 2),
         int((p1[1] + p2[1]) / 2),
     )
     radius = int(np.linalg.norm(np.array(p1) - np.array(p2)))  # / 2)
-    np_image = pil_to_opencv(image)
-    cv2.circle(np_image, center, radius, color, 2)
+    np_image = pil_to_opencv(image)  # BGR format!
+    cv2.circle(np_image, center, radius + 20, (0, 255, 255), 2)
+    cv2.circle(np_image, p1, radius, (0, 0, 255), 2)
+    cv2.circle(np_image, p2, radius, (0, 0, 255), 2)
     return opencv_to_pil(np_image)

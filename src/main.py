@@ -273,9 +273,11 @@ class Sealant(Vision, EasyResource):
                 max_height=self.max_height,
                 cfg_thresh=self.thresh_offset,
             )
-
-            p1, p2, _ = contours_min_distance(contours[0].contour, contours[1].contour)
-            pil_image = mark_defect(pil_image, p1, p2)
+            if len(contours) == 2:
+                p1, p2, _ = contours_min_distance(
+                    pil_image, contours[0].contour, contours[1].contour
+                )
+                pil_image = mark_defect(pil_image, p1, p2)
             # Add additional detected contours attributes to the extra field
             result.extra["detected_contours"] = [
                 {
