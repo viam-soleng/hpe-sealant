@@ -23,7 +23,7 @@ The following attributes are available for this model:
 | `min_width`     | int    | Optional  | Minimal contour width to be considered                                                                |
 | `max_width`     | int    | Optional  | Maximal contour width to be considered                                                                |
 | `bw_image`      | int    | Optional  | Return the thresholded image                                                                          |
-| `thresh_offset` | int    | Optional  | Adjust the Otsu threshold [internal formula: threshold = otsu-threshold - thresh_offset]             |
+| `thresh_offset` | int    | Optional  | Adjust the Otsu threshold [internal formula: threshold = otsu-threshold - thresh_offset]              |
 
 #### Example Configuration
 
@@ -45,20 +45,12 @@ If you configure debug logs for the vision service component (restart required),
 
 This module provides two `do_commands`, one for storing rerference contours and the second one to delete the stored reference contours.
 
-#### Store Contours
+#### Save Results
 
 ```json
 {
-  "command": "save_contours",
-  "camera_name": "sealant-ref"
-}
-```
-
-#### Delete Contours
-
-```json
-{
-  "command": "delete_contours"
+  "command": "save_result",
+  "result_id": "xxxx"
 }
 ```
 

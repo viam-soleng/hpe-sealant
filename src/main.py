@@ -25,12 +25,6 @@ import uuid
 
 from src.analyze import analyze_image
 
-from src.contours import (
-    find_contours,
-    save_contours,
-    ViamContour,
-)
-
 
 class Sealant(Vision, EasyResource):
     MODEL: ClassVar[Model] = Model(
@@ -280,11 +274,14 @@ class Sealant(Vision, EasyResource):
             raise ViamError(
                 f"Requested camera {camera_name} is not listed in dependencies"
             )
-        if type(camera) == CameraClient:
+        if isinstance(camera, CameraClient):
             image = await camera.get_image()
-            return await self.get_detections(image)
+            detections = await self.get_detections(image)
         else:
-            raise ValueError(f"Camera {camera_name} is not a Camera resource")
+            raise ViamError(
+                f"Requested camera {camera_name} is not a valid CameraClient"
+            )
+        return detections
 
     async def get_detections(
         self,
@@ -293,21 +290,8 @@ class Sealant(Vision, EasyResource):
         extra: Optional[Mapping[str, ValueTypes]] = None,
         timeout: Optional[float] = None,
     ) -> List[Detection]:
-        # Return the bounding boxes of the contours
-        contours, _ = find_contours(
-            viam_to_pil_image(image),
-            min_area=self.min_area,
-            max_area=self.max_area,
-            max_contours=self.max_contours,
-            min_width=self.min_width,
-            max_width=self.max_width,
-            min_height=self.min_height,
-            max_height=self.max_height,
-            cfg_thresh=self.thresh_offset,
-        )
-        detections: List[Detection] = []
-        for ctr in contours:
-            detections.append(ctr["detection"])
+        pil_image = viam_to_pil_image(image)
+        _, detections = analyze_image(self, pil_image)
         return detections
 
     async def get_classifications_from_camera(
@@ -335,61 +319,20 @@ class Sealant(Vision, EasyResource):
     async def do_command(
         self, command, *, timeout=None, **kwargs
     ) -> Mapping[str, ValueTypes]:
-        if command["command"] == "save_contours":
-            self.logger.info("save_contours: %s", command)
-            if "camera_name" not in command:
-                raise ViamError("Missing camera_name in command")
-            try:
-                camera = self.dependencies[
-                    CameraClient.get_resource_name(command["camera_name"])
-                ]
-            except KeyError:
-                raise ViamError(
-                    f"Requested camera {command['camera_name']} is not listed in dependencies"
-                )
-            if isinstance(camera, CameraClient):
-                image = await camera.get_image()
-                pil_image = viam_to_pil_image(image)
-                contours, _ = find_contours(
-                    pil_image,
-                    min_area=self.min_area,
-                    max_area=self.max_area,
-                    max_contours=self.max_contours,
-                    min_width=self.min_width,
-                    max_width=self.max_width,
-                    min_height=self.min_height,
-                    max_height=self.max_height,
-                    cfg_thresh=self.thresh_offset,
-                )
-                self.ref_contours = contours.copy()
-                save_contours(contours, "contours.pickle")
-                # pil_image = draw_contours(pil_image, contours)
-                return {"result": f"{len(contours)} contours saved to file"}
+        if command["command"] == "save_result":
+            self.logger.info("save result: %s", command)
+            if "result_id" not in command:
+                raise ViamError("Missing `result_id` in command")
             else:
-                raise ViamError(
-                    f"Requested camera {command['camera_name']} is not a valid CameraClient"
-                )
-        if command["command"] == "delete_contours":
-            self.logger.info("delete_contours: %s", command)
-            if os.path.exists("contours.pickle"):
-                os.remove("contours.pickle")
-                self.ref_contours: List[ViamContour] = []
-                return {"result": "Reference contours deleted"}
-            else:
-                return {"result": "No reference contours file found"}
-
-        if command["command"] == "upload_image":
-            self.logger.info("upload_image: %s", command)
-            if "img_id" not in command:
-                raise ViamError("Missing image id in command")
-            else:
-                img_id = command["img_id"]
+                result_id = command["result_id"]
                 for item in self.capture_all_cache:
-                    if img_id in item:
-                        self.capture_all_queue.put(item.get(img_id))
-                        return {"result": f"Image with id {img_id} marked for upload"}
-                self.logger.error(f"Image with id {img_id} not found in cache")
-                raise ViamError(f"Image with id {img_id} not found in cache")
+                    if result_id in item:
+                        self.capture_all_queue.put(item.get(result_id))
+                        return {
+                            "result": f"Result with id {result_id} marked for upload"
+                        }
+                self.logger.error(f"Result with id {result_id} not found in cache")
+                raise ViamError(f"Result with id {result_id} not found in cache")
         raise ViamError(f"Unknown command {command}")
 
     async def get_classifications(
