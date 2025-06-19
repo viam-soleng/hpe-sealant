@@ -3,14 +3,16 @@ from typing import Self, TYPE_CHECKING, List, Tuple
 from PIL import Image
 import cv2
 import numpy as np
-from src.utils import opencv_to_pil, pil_to_opencv
+from src.utils import distance_to_detection, opencv_to_pil, pil_to_opencv
+from viam.proto.service.vision import Detection
 
 if TYPE_CHECKING:
     from src.main import Sealant
 
 
-def analyze_image(self: Sealant, image: Image) -> Tuple[Image.Image, float]:
+def analyze_image(self: Sealant, image: Image) -> Tuple[Image.Image, List[Detection]]:
     distance = 0.0
+    detections: List[Detection] = []
     np_image = pil_to_opencv(image)
     filtered_contours = find_contours(self, np_image)
     for i, contour in enumerate(filtered_contours):
@@ -28,13 +30,14 @@ def analyze_image(self: Sealant, image: Image) -> Tuple[Image.Image, float]:
                 p1,
                 p2,
             )
+        detections.append(distance_to_detection(p1, p2, distance))
     else:
         self.logger.warning(
             "Expected exactly two contours for sealant width analysis, found: {}".format(
                 len(filtered_contours)
             )
         )
-    return opencv_to_pil(np_image), distance
+    return opencv_to_pil(np_image), detections
 
 
 def mark_defect(

@@ -1,6 +1,7 @@
 from PIL import Image
 import cv2
 import numpy as np
+from viam.proto.service.vision import Detection
 
 
 def pil_to_opencv(pil_image: Image.Image) -> np.ndarray:
@@ -37,3 +38,17 @@ def opencv_to_pil(np_image: np.ndarray) -> Image.Image:
     pil_image = Image.fromarray(np_image)
 
     return pil_image
+
+
+def distance_to_detection(p1, p2, distance) -> Detection:
+    x_center = (p1[0] + p2[0]) / 2
+    y_center = (p1[1] + p2[1]) / 2
+    detection = Detection(
+        x_min=int(x_center - distance),
+        y_min=int(y_center - distance),
+        x_max=int(x_center + distance),
+        y_max=int(y_center + distance),
+        confidence=1.0,
+        class_name=str(distance),
+    )
+    return detection

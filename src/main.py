@@ -27,12 +27,7 @@ from src.analyze import analyze_image
 
 from src.contours import (
     find_contours,
-    load_contours,
     save_contours,
-    draw_contours,
-    compare_hausdorff,
-    contours_min_distance,
-    mark_defect,
     ViamContour,
 )
 
@@ -257,19 +252,16 @@ class Sealant(Vision, EasyResource):
             raise ViamError(
                 f"Requested camera {camera_name} is not listed in dependencies"
             )
-        result = CaptureAllResult(detections=[], extra={})
-        contours: List[ViamContour] = []
         if isinstance(camera, CameraClient):
             image = await camera.get_image()
             pil_image = viam_to_pil_image(image)
-            pil_image, distance = analyze_image(self, pil_image)
-            # Add additional detected contours attributes to the extra field
-            result.extra["min_width"] = distance
-            result.image = pil_to_viam_image(pil_image, image.mime_type)
+            pil_image, detections = analyze_image(self, pil_image)
+            viam_image = pil_to_viam_image(pil_image, image.mime_type)
         else:
             raise ViamError(
                 f"Requested camera {camera_name} is not a valid CameraClient"
             )
+        result = CaptureAllResult(image=viam_image, detections=detections, extra={})
         id = str(uuid.uuid1())
         self.capture_all_cache.append({id: result})
         result.extra["id"] = id
@@ -326,25 +318,6 @@ class Sealant(Vision, EasyResource):
         extra: Optional[Mapping[str, ValueTypes]] = None,
         timeout: Optional[float] = None,
     ) -> List[Classification]:
-        raise NotImplementedError()
-
-    async def get_classifications(
-        self,
-        image: ViamImage,
-        count: int,
-        *,
-        extra: Optional[Mapping[str, ValueTypes]] = None,
-        timeout: Optional[float] = None,
-    ) -> List[Classification]:
-        raise NotImplementedError()
-
-    async def get_object_point_clouds(
-        self,
-        camera_name: str,
-        *,
-        extra: Optional[Mapping[str, ValueTypes]] = None,
-        timeout: Optional[float] = None,
-    ) -> List[PointCloudObject]:
         raise NotImplementedError()
 
     async def get_properties(
@@ -418,6 +391,25 @@ class Sealant(Vision, EasyResource):
                 self.logger.error(f"Image with id {img_id} not found in cache")
                 raise ViamError(f"Image with id {img_id} not found in cache")
         raise ViamError(f"Unknown command {command}")
+
+    async def get_classifications(
+        self,
+        image: ViamImage,
+        count: int,
+        *,
+        extra: Optional[Mapping[str, ValueTypes]] = None,
+        timeout: Optional[float] = None,
+    ) -> List[Classification]:
+        raise NotImplementedError()
+
+    async def get_object_point_clouds(
+        self,
+        camera_name: str,
+        *,
+        extra: Optional[Mapping[str, ValueTypes]] = None,
+        timeout: Optional[float] = None,
+    ) -> List[PointCloudObject]:
+        raise NotImplementedError()
 
 
 if __name__ == "__main__":
