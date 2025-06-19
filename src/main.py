@@ -1,5 +1,4 @@
 import asyncio
-import os
 from typing import Any, ClassVar, Deque, List, Mapping, Optional, Sequence
 
 from typing_extensions import Self
@@ -23,14 +22,7 @@ from collections import deque
 from typing import Dict
 import uuid
 
-from src.contours import (
-    find_contours,
-    load_contours,
-    save_contours,
-    draw_contours,
-    compare_hausdorff,
-    ViamContour,
-)
+from src.analyze import analyze_image
 
 
 class Sealant(Vision, EasyResource):
@@ -54,14 +46,9 @@ class Sealant(Vision, EasyResource):
 
         # Check if draw_contours is set to string in config
         if "draw_contours" in config.attributes.fields:
-            if not config.attributes.fields["draw_contours"].HasField("string_value"):
-                raise Exception("draw_contours must be a string.")
-            draw_contours = config.attributes.fields["draw_contours"].string_value
-            # Check if draw_contours is not set to reference or detected or both
-            if not draw_contours in ["reference", "detected", "both"]:
-                raise Exception(
-                    "draw_contours must be set to reference, detected or both"
-                )
+            if not config.attributes.fields["draw_contours"].HasField("bool_value"):
+                raise Exception("draw_contours must be a boolean.")
+
         # Check if max_contours is set to number in config
         if "max_contours" in config.attributes.fields:
             if not config.attributes.fields["max_contours"].HasField("number_value"):
@@ -157,23 +144,19 @@ class Sealant(Vision, EasyResource):
         self.capture_all_cache: Deque[Dict[str, CaptureAllResult]] = deque(maxlen=10)
         # Queue to store capture_all_from_camera results to be uploaded by data manager
         self.capture_all_queue: Queue = Queue()
-
-        if "draw_contours" in config.attributes.fields:
-            self.draw_contours = config.attributes.fields["draw_contours"].string_value
-            if self.draw_contours in ["reference", "detected", "both"]:
-                self.logger.info(f"Drawing {self.draw_contours} contours on the image")
-        else:
-            self.draw_contours = ""
-            self.logger.info("Not drawing contours on the image")
-
         if "max_contours" in config.attributes.fields:
             self.max_contours = int(
                 config.attributes.fields["max_contours"].number_value
             )
-            self.logger.info(f"Max number of contours: {self.max_contours}")
         else:
             self.max_contours = 0
-            self.logger.info("No max number of contours set, will return all contours")
+        self.logger.info(f"Max number of contours: {self.max_contours}")
+
+        if "draw_contours" in config.attributes.fields:
+            self.draw_contours = config.attributes.fields["draw_contours"].bool_value
+        else:
+            self.draw_contours = False
+        self.logger.info("Draw contours on the image: %s", self.draw_contours)
 
         if "min_area" in config.attributes.fields:
             self.min_area = int(config.attributes.fields["min_area"].number_value)
@@ -215,18 +198,24 @@ class Sealant(Vision, EasyResource):
             self.thresh_offset = int(
                 config.attributes.fields["thresh_offset"].number_value
             )
-            self.logger.info(f"Adjust Otsu threshold by: {self.thresh_offset}")
         else:
             self.thresh_offset = 0
+        self.logger.info(f"Adjust Otsu threshold by: {self.thresh_offset}")
+
         if "bw_image" in config.attributes.fields:
             self.bw_image = config.attributes.fields["bw_image"].bool_value
-            self.logger.info(f"Returning black and white image: {self.bw_image}")
         else:
             self.bw_image = False
-            self.logger.info("Not returning black and white image")
-        # Load the reference contours from the pickle file
-        # self.ref_contours = load_contours("contours.pickle")
-        # Store the dependencies for later use
+        self.logger.info(f"Returning black and white image: {self.bw_image}")
+
+        if "mark_detections" in config.attributes.fields:
+            self.mark_detections = config.attributes.fields[
+                "mark_detections"
+            ].bool_value
+        else:
+            self.mark_detections = False
+        self.logger.info(f"Mark the detections on the image: {self.mark_detections}")
+
         self.dependencies = dependencies
         return
 
@@ -247,102 +236,22 @@ class Sealant(Vision, EasyResource):
                 return self.capture_all_queue.get()
             else:
                 raise NoCaptureToStoreError()
-        # Load the reference contours from the pickle file
-        self.ref_contours = load_contours("contours.pickle")
         try:
             camera = self.dependencies[CameraClient.get_resource_name(camera_name)]
         except KeyError:
             raise ViamError(
                 f"Requested camera {camera_name} is not listed in dependencies"
             )
-        result = CaptureAllResult(detections=[], extra={})
-        contours: List[ViamContour] = []
         if isinstance(camera, CameraClient):
             image = await camera.get_image()
             pil_image = viam_to_pil_image(image)
-            contours, bw_image = find_contours(
-                pil_image,
-                min_area=self.min_area,
-                max_area=self.max_area,
-                max_contours=self.max_contours,
-                min_width=self.min_width,
-                max_width=self.max_width,
-                min_height=self.min_height,
-                max_height=self.max_height,
-                cfg_thresh=self.thresh_offset,
-            )
-            # Add additional detected contours attributes to the extra field
-            result.extra["detected_contours"] = [
-                {
-                    "area": ctr.area,
-                    "width": ctr.width,
-                    "height": ctr.height,
-                    "arclength": ctr.arclenght,
-                }
-                for ctr in contours
-            ]
-            self.logger.debug(
-                f"Found {len(contours)} contours in the image: {result.extra['detected_contours']}"
-            )
-
-            # Compare contours with reference contours
-            if len(self.ref_contours) > 0 and len(contours) > 0:
-                result.extra["ref_contours"] = [
-                    {
-                        "area": rctr.area,
-                        "hausdorff": rctr.hausdorff,
-                        "arclength": rctr.arclenght,
-                    }
-                    for rctr in self.ref_contours
-                ]
-                res_contours = compare_hausdorff(self.ref_contours, contours)
-                # extract the hausdorff distances from the result list and add them to the extra field
-                result.extra["contours"] = [
-                    {
-                        "area": ctr.area,
-                        "hausdorff": ctr.hausdorff,
-                        "arclength": ctr.arclenght,
-                    }
-                    for ctr in res_contours
-                ]
-            else:
-                result.extra["contours"] = [
-                    {
-                        "area": ctr.area,
-                        "arclength": ctr.arclenght,
-                        "hausdorff": "no reference contour",
-                    }
-                    for ctr in contours
-                ]
-            # Draw the detected or reference contours on the image. Default is none.
-            if self.bw_image:
-                pil_image = bw_image
-
-            if (
-                self.draw_contours == "detected" or self.draw_contours == "both"
-            ) and len(contours) > 0:
-                pil_image = draw_contours(pil_image, contours, (0, 0, 255))
-                # Add the contours bounding boxes to the result.detections
-                for det_idx, ctr in enumerate(contours):
-                    det = ctr.detection
-                    det.class_name = f"detected_{det_idx}"
-                    result.detections.append(det)
-            if (
-                self.draw_contours == "reference" or self.draw_contours == "both"
-            ) and len(self.ref_contours) > 0:
-                pil_image = draw_contours(pil_image, self.ref_contours, (0, 255, 0))
-                # Add the contours bounding boxes to the result.detections
-                for ref_idx, ref_ctr in enumerate(self.ref_contours):
-                    ref_det = ref_ctr.detection
-                    # TODO: For some reason this becomes NULL when saving new contours
-                    ref_det.class_name = f"reference_{ref_idx}"
-                    result.detections.append(ref_det)
-            result.image = pil_to_viam_image(pil_image, image.mime_type)
-
+            pil_image, detections = analyze_image(self, pil_image)
+            viam_image = pil_to_viam_image(pil_image, image.mime_type)
         else:
             raise ViamError(
                 f"Requested camera {camera_name} is not a valid CameraClient"
             )
+        result = CaptureAllResult(image=viam_image, detections=detections, extra={})
         id = str(uuid.uuid1())
         self.capture_all_cache.append({id: result})
         result.extra["id"] = id
@@ -361,11 +270,14 @@ class Sealant(Vision, EasyResource):
             raise ViamError(
                 f"Requested camera {camera_name} is not listed in dependencies"
             )
-        if type(camera) == CameraClient:
+        if isinstance(camera, CameraClient):
             image = await camera.get_image()
-            return await self.get_detections(image)
+            detections = await self.get_detections(image)
         else:
-            raise ValueError(f"Camera {camera_name} is not a Camera resource")
+            raise ViamError(
+                f"Requested camera {camera_name} is not a valid CameraClient"
+            )
+        return detections
 
     async def get_detections(
         self,
@@ -374,21 +286,8 @@ class Sealant(Vision, EasyResource):
         extra: Optional[Mapping[str, ValueTypes]] = None,
         timeout: Optional[float] = None,
     ) -> List[Detection]:
-        # Return the bounding boxes of the contours
-        contours, _ = find_contours(
-            viam_to_pil_image(image),
-            min_area=self.min_area,
-            max_area=self.max_area,
-            max_contours=self.max_contours,
-            min_width=self.min_width,
-            max_width=self.max_width,
-            min_height=self.min_height,
-            max_height=self.max_height,
-            cfg_thresh=self.thresh_offset,
-        )
-        detections: List[Detection] = []
-        for ctr in contours:
-            detections.append(ctr["detection"])
+        pil_image = viam_to_pil_image(image)
+        _, detections = analyze_image(self, pil_image)
         return detections
 
     async def get_classifications_from_camera(
@@ -400,6 +299,37 @@ class Sealant(Vision, EasyResource):
         timeout: Optional[float] = None,
     ) -> List[Classification]:
         raise NotImplementedError()
+
+    async def get_properties(
+        self,
+        *,
+        extra: Optional[Mapping[str, ValueTypes]] = None,
+        timeout: Optional[float] = None,
+    ) -> Vision.Properties:
+        return Vision.Properties(
+            classifications_supported=False,
+            detections_supported=True,
+            object_point_clouds_supported=False,
+        )
+
+    async def do_command(
+        self, command, *, timeout=None, **kwargs
+    ) -> Mapping[str, ValueTypes]:
+        if command["command"] == "save_result":
+            self.logger.info("save result: %s", command)
+            if "result_id" not in command:
+                raise ViamError("Missing `result_id` in command")
+            else:
+                result_id = command["result_id"]
+                for item in self.capture_all_cache:
+                    if result_id in item:
+                        self.capture_all_queue.put(item.get(result_id))
+                        return {
+                            "result": f"Result with id {result_id} marked for upload"
+                        }
+                self.logger.error(f"Result with id {result_id} not found in cache")
+                raise ViamError(f"Result with id {result_id} not found in cache")
+        raise ViamError(f"Unknown command {command}")
 
     async def get_classifications(
         self,
@@ -419,78 +349,6 @@ class Sealant(Vision, EasyResource):
         timeout: Optional[float] = None,
     ) -> List[PointCloudObject]:
         raise NotImplementedError()
-
-    async def get_properties(
-        self,
-        *,
-        extra: Optional[Mapping[str, ValueTypes]] = None,
-        timeout: Optional[float] = None,
-    ) -> Vision.Properties:
-        return Vision.Properties(
-            classifications_supported=False,
-            detections_supported=True,
-            object_point_clouds_supported=False,
-        )
-
-    async def do_command(
-        self, command, *, timeout=None, **kwargs
-    ) -> Mapping[str, ValueTypes]:
-        if command["command"] == "save_contours":
-            self.logger.info("save_contours: %s", command)
-            if "camera_name" not in command:
-                raise ViamError("Missing camera_name in command")
-            try:
-                camera = self.dependencies[
-                    CameraClient.get_resource_name(command["camera_name"])
-                ]
-            except KeyError:
-                raise ViamError(
-                    f"Requested camera {command['camera_name']} is not listed in dependencies"
-                )
-            if isinstance(camera, CameraClient):
-                image = await camera.get_image()
-                pil_image = viam_to_pil_image(image)
-                contours, _ = find_contours(
-                    pil_image,
-                    min_area=self.min_area,
-                    max_area=self.max_area,
-                    max_contours=self.max_contours,
-                    min_width=self.min_width,
-                    max_width=self.max_width,
-                    min_height=self.min_height,
-                    max_height=self.max_height,
-                    cfg_thresh=self.thresh_offset,
-                )
-                self.ref_contours = contours.copy()
-                save_contours(contours, "contours.pickle")
-                # pil_image = draw_contours(pil_image, contours)
-                return {"result": f"{len(contours)} contours saved to file"}
-            else:
-                raise ViamError(
-                    f"Requested camera {command['camera_name']} is not a valid CameraClient"
-                )
-        if command["command"] == "delete_contours":
-            self.logger.info("delete_contours: %s", command)
-            if os.path.exists("contours.pickle"):
-                os.remove("contours.pickle")
-                self.ref_contours: List[ViamContour] = []
-                return {"result": "Reference contours deleted"}
-            else:
-                return {"result": "No reference contours file found"}
-
-        if command["command"] == "upload_image":
-            self.logger.info("upload_image: %s", command)
-            if "img_id" not in command:
-                raise ViamError("Missing image id in command")
-            else:
-                img_id = command["img_id"]
-                for item in self.capture_all_cache:
-                    if img_id in item:
-                        self.capture_all_queue.put(item.get(img_id))
-                        return {"result": f"Image with id {img_id} marked for upload"}
-                self.logger.error(f"Image with id {img_id} not found in cache")
-                raise ViamError(f"Image with id {img_id} not found in cache")
-        raise ViamError(f"Unknown command {command}")
 
 
 if __name__ == "__main__":
