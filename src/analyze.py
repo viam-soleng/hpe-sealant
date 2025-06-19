@@ -3,7 +3,7 @@ from typing import Self, TYPE_CHECKING, List, Tuple
 from PIL import Image
 import cv2
 import numpy as np
-from src.utils import distance_to_detection, opencv_to_pil, pil_to_opencv
+from src.utils import distance_to_detection, opencv_to_pil, pil_to_opencv, mark_defect
 from viam.proto.service.vision import Detection
 
 if TYPE_CHECKING:
@@ -14,17 +14,20 @@ def analyze_image(self: Sealant, image: Image) -> Tuple[Image.Image, List[Detect
     distance = 0.0
     detections: List[Detection] = []
     np_image = pil_to_opencv(image)
-    filtered_contours = find_contours(self, np_image)
+    thresh_image = threshold_image(np_image, self.thresh_offset)
+    if self.bw_image:
+        np_image = cv2.cvtColor(thresh_image, cv2.COLOR_GRAY2RGB)
+    filtered_contours = find_contours(self, thresh_image)
     for i, contour in enumerate(filtered_contours):
         area = cv2.contourArea(contour)
         self.logger.debug(f"Contour {i} area: {area}")
-    if True:
+    if self.draw_contours:
         np_image = cv2.drawContours(np_image, filtered_contours, -1, (0, 255, 0), 1)
     if len(filtered_contours) == 2:
         p1, p2, distance = check_sealant_width(
             np_image, filtered_contours[0], filtered_contours[1]
         )
-        if distance > 0:
+        if self.mark_detections:
             np_image = mark_defect(
                 np_image,
                 p1,
@@ -38,22 +41,6 @@ def analyze_image(self: Sealant, image: Image) -> Tuple[Image.Image, List[Detect
             )
         )
     return opencv_to_pil(np_image), detections
-
-
-def mark_defect(
-    image: np.ndarray,
-    p1: Tuple[int, int],
-    p2: Tuple[int, int],
-) -> np.ndarray:
-    center = (
-        int((p1[0] + p2[0]) / 2),
-        int((p1[1] + p2[1]) / 2),
-    )
-    radius = int(np.linalg.norm(np.array(p1) - np.array(p2)))  # / 2)
-    cv2.circle(image, center, radius + 20, (0, 255, 255), 2)
-    cv2.circle(image, p1, radius, (0, 0, 255), 2)
-    cv2.circle(image, p2, radius, (0, 0, 255), 2)
-    return image
 
 
 def check_sealant_width(image: np.ndarray, c1: np.ndarray, c2: np.ndarray):
@@ -89,8 +76,7 @@ def check_contour_anomalies(self: Self, filtered_contours: List) -> List:
 
 
 def find_contours(self: Sealant, image: np.ndarray) -> List:
-    thresh_image = threshold_image(image, self.thresh_offset)
-    contours, _ = cv2.findContours(thresh_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     # Filter contours based on the configuration
     filtered_contours = filter_contours_by_size(
         contours,
@@ -103,11 +89,6 @@ def find_contours(self: Sealant, image: np.ndarray) -> List:
         max_contours=self.max_contours,
     )
     return filtered_contours
-
-
-def compare_contours(filtered_contours, ref_contours):
-    # TODO: Consider result = cv2.pointPolygonTest(contour, point, False)
-    return
 
 
 def threshold_image(image: np.ndarray, cfg_thresh: int) -> np.ndarray:

@@ -1,5 +1,4 @@
 import asyncio
-import os
 from typing import Any, ClassVar, Deque, List, Mapping, Optional, Sequence
 
 from typing_extensions import Self
@@ -47,14 +46,9 @@ class Sealant(Vision, EasyResource):
 
         # Check if draw_contours is set to string in config
         if "draw_contours" in config.attributes.fields:
-            if not config.attributes.fields["draw_contours"].HasField("string_value"):
-                raise Exception("draw_contours must be a string.")
-            draw_contours = config.attributes.fields["draw_contours"].string_value
-            # Check if draw_contours is not set to reference or detected or both
-            if not draw_contours in ["reference", "detected", "both"]:
-                raise Exception(
-                    "draw_contours must be set to reference, detected or both"
-                )
+            if not config.attributes.fields["draw_contours"].HasField("bool_value"):
+                raise Exception("draw_contours must be a boolean.")
+
         # Check if max_contours is set to number in config
         if "max_contours" in config.attributes.fields:
             if not config.attributes.fields["max_contours"].HasField("number_value"):
@@ -150,23 +144,19 @@ class Sealant(Vision, EasyResource):
         self.capture_all_cache: Deque[Dict[str, CaptureAllResult]] = deque(maxlen=10)
         # Queue to store capture_all_from_camera results to be uploaded by data manager
         self.capture_all_queue: Queue = Queue()
-
-        if "draw_contours" in config.attributes.fields:
-            self.draw_contours = config.attributes.fields["draw_contours"].string_value
-            if self.draw_contours in ["reference", "detected", "both"]:
-                self.logger.info(f"Drawing {self.draw_contours} contours on the image")
-        else:
-            self.draw_contours = ""
-            self.logger.info("Not drawing contours on the image")
-
         if "max_contours" in config.attributes.fields:
             self.max_contours = int(
                 config.attributes.fields["max_contours"].number_value
             )
-            self.logger.info(f"Max number of contours: {self.max_contours}")
         else:
             self.max_contours = 0
-            self.logger.info("No max number of contours set, will return all contours")
+        self.logger.info(f"Max number of contours: {self.max_contours}")
+
+        if "draw_contours" in config.attributes.fields:
+            self.draw_contours = config.attributes.fields["draw_contours"].bool_value
+        else:
+            self.draw_contours = False
+        self.logger.info("Draw contours on the image: %s", self.draw_contours)
 
         if "min_area" in config.attributes.fields:
             self.min_area = int(config.attributes.fields["min_area"].number_value)
@@ -208,18 +198,24 @@ class Sealant(Vision, EasyResource):
             self.thresh_offset = int(
                 config.attributes.fields["thresh_offset"].number_value
             )
-            self.logger.info(f"Adjust Otsu threshold by: {self.thresh_offset}")
         else:
             self.thresh_offset = 0
+        self.logger.info(f"Adjust Otsu threshold by: {self.thresh_offset}")
+
         if "bw_image" in config.attributes.fields:
             self.bw_image = config.attributes.fields["bw_image"].bool_value
-            self.logger.info(f"Returning black and white image: {self.bw_image}")
         else:
             self.bw_image = False
-            self.logger.info("Not returning black and white image")
-        # Load the reference contours from the pickle file
-        # self.ref_contours = load_contours("contours.pickle")
-        # Store the dependencies for later use
+        self.logger.info(f"Returning black and white image: {self.bw_image}")
+
+        if "mark_detections" in config.attributes.fields:
+            self.mark_detections = config.attributes.fields[
+                "mark_detections"
+            ].bool_value
+        else:
+            self.mark_detections = False
+        self.logger.info(f"Mark the detections on the image: {self.mark_detections}")
+
         self.dependencies = dependencies
         return
 

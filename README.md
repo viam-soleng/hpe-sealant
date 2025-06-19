@@ -12,18 +12,19 @@ This module implements a Viam `VisionService`.
 
 The following attributes are available for this model:
 
-| Name            | Type   | Inclusion | Description                                                                                           |
-| --------------- | ------ | --------- | ----------------------------------------------------------------------------------------------------- |
-| `draw_contours` | string | Optional  | Draws the available contours on the returned image ["reference", "detected", "both"]. Default is none |
-| `max_contours`  | int    | Optional  | Maximum number of contours processed. Default or `0` is unlimited.                                    |
-| `min_area`      | float  | Optional  | Minimal contour area to be considered                                                                 |
-| `max_area`      | float  | Optional  | Maximal contour area to be considered                                                                 |
-| `min_height`    | int    | Optional  | Minimal contour height to be considered                                                               |
-| `max_height`    | int    | Optional  | Maximal contour height to be considered                                                               |
-| `min_width`     | int    | Optional  | Minimal contour width to be considered                                                                |
-| `max_width`     | int    | Optional  | Maximal contour width to be considered                                                                |
-| `bw_image`      | int    | Optional  | Return the thresholded image                                                                          |
-| `thresh_offset` | int    | Optional  | Adjust the Otsu threshold [internal formula: threshold = otsu-threshold - thresh_offset]              |
+| Name              | Type  | Inclusion | Description                                                                                       |
+| ----------------- | ----- | --------- | ------------------------------------------------------------------------------------------------- |
+| `min_area`        | float | Optional  | Minimal contour area to be considered                                                             |
+| `max_area`        | float | Optional  | Maximal contour area to be considered                                                             |
+| `min_height`      | int   | Optional  | Minimal contour height to be considered                                                           |
+| `max_height`      | int   | Optional  | Maximal contour height to be considered                                                           |
+| `min_width`       | int   | Optional  | Minimal contour width to be considered                                                            |
+| `max_width`       | int   | Optional  | Maximal contour width to be considered                                                            |
+| `bw_image`        | int   | Optional  | Return the thresholded image                                                                      |
+| `thresh_offset`   | int   | Optional  | Adjust the Otsu detected threshold [internal formula: threshold = otsu-threshold - thresh_offset] |
+| `max_contours`    | int   | Optional  | Maximum number of contours processed. Default or `0` is unlimited.                                |
+| `draw_contours`   | bool  | Optional  | Draws the detected contours on the returned image                                                 |
+| `mark_detections` | bool  | Optional  | Draws the detected distances on the returned image                                                |
 
 #### Example Configuration
 
