@@ -11,7 +11,8 @@ if TYPE_CHECKING:
 
 
 def analyze_image(self: Sealant, image: Image) -> Tuple[Image.Image, List[Detection]]:
-    distance = 0.0
+    min_distance = 0.0
+    max_distance = 0.0
     detections: List[Detection] = []
     np_image = pil_to_opencv(image)
     thresh_image = threshold_image(np_image, self.thresh_offset)
@@ -24,16 +25,28 @@ def analyze_image(self: Sealant, image: Image) -> Tuple[Image.Image, List[Detect
     if self.draw_contours:
         np_image = cv2.drawContours(np_image, filtered_contours, -1, (0, 255, 0), 1)
     if len(filtered_contours) == 2:
-        p1, p2, distance = check_sealant_width(
-            np_image, filtered_contours[0], filtered_contours[1]
+        p_min_1, p_min_2, min_distance, p_max_1, p_max_2, max_distance = (
+            check_sealant_width(np_image, filtered_contours[0], filtered_contours[1])
         )
         if self.mark_detections:
             np_image = mark_defect(
                 np_image,
-                p1,
-                p2,
+                p_min_1,
+                p_min_2,
             )
-        detections.append(distance_to_detection(p1, p2, distance))
+            np_image = mark_defect(
+                np_image,
+                p_max_1,
+                p_max_2,
+            )
+        points = [p_min_1, p_min_2, p_max_1, p_max_2]
+        if any(p is None for p in points):
+            self.logger.warning(
+                f"One or more points for sealant width analysis are None: "
+                f"p_min_1={p_min_1}, p_min_2={p_min_2}, p_max_1={p_max_1}, p_max_2={p_max_2}"
+            )
+        detections.append(distance_to_detection(p_min_1, p_min_2, min_distance))
+        detections.append(distance_to_detection(p_max_1, p_max_2, max_distance))
     else:
         self.logger.warning(
             "Expected exactly two contours for sealant width analysis, found: {}".format(
@@ -45,22 +58,38 @@ def analyze_image(self: Sealant, image: Image) -> Tuple[Image.Image, List[Detect
 
 def check_sealant_width(image: np.ndarray, c1: np.ndarray, c2: np.ndarray):
     min_dist = max(image.shape[:2])
-    chosen_point_c2 = None
-    chosen_point_c1 = None
+    chosen_min_point_c2 = None
+    chosen_min_point_c1 = None
+
+    max_dist = 0.0
+    chosen_max_point_c2 = None
+    chosen_max_point_c1 = None
     for point in c1:
         t = point[0][0], point[0][1]
-        index, dist = closest_point(t, c2[:, 0])
-        if dist[index] < min_dist:
-            min_dist = dist[index]
-            chosen_point_c2 = tuple(c2[index][0])
-            chosen_point_c1 = t
-    return chosen_point_c1, chosen_point_c2, min_dist
+        index, distance = closest_point(t, c2[:, 0])
+        if distance < min_dist:
+            min_dist = distance
+            chosen_min_point_c2 = tuple(c2[index][0])
+            chosen_min_point_c1 = t
+        if distance > max_dist:
+            max_dist = distance
+            chosen_max_point_c2 = tuple(c2[index][0])
+            chosen_max_point_c1 = t
+    return (
+        chosen_min_point_c1,
+        chosen_min_point_c2,
+        min_dist,
+        chosen_max_point_c1,
+        chosen_max_point_c2,
+        max_dist,
+    )
 
 
 def closest_point(point, array):
     diff = array - point
-    distance = np.einsum("ij,ij->i", diff, diff)
-    return np.argmin(distance), distance
+    distances = np.einsum("ij,ij->i", diff, diff)
+    idx = np.argmin(distances)
+    return idx, np.sqrt(distances[idx])
 
 
 def check_contour_anomalies(self: Self, filtered_contours: List) -> List:

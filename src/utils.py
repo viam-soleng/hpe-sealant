@@ -59,6 +59,7 @@ def mark_defect(
     image: np.ndarray,
     p1: Tuple[int, int],
     p2: Tuple[int, int],
+    color: Tuple[int, int, int] = (0, 0, 255),
 ) -> np.ndarray:
     center = (
         int((p1[0] + p2[0]) / 2),
@@ -66,7 +67,7 @@ def mark_defect(
     )
     radius = int(np.linalg.norm(np.array(p1) - np.array(p2)))
     # cv2.circle(image, center, radius + 20, (0, 255, 255), 2)
-    cv2.line(image, p1, p2, (0, 0, 255), 1)
-    cv2.circle(image, p1, radius, (0, 0, 255), 2)
-    cv2.circle(image, p2, radius, (0, 0, 255), 2)
+    cv2.line(image, p1, p2, color, 1)
+    cv2.circle(image, p1, radius, color, 2)
+    cv2.circle(image, p2, radius, color, 2)
     return image
