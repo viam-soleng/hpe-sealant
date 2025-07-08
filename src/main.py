@@ -243,7 +243,7 @@ class Sealant(Vision, EasyResource):
                 f"Requested camera {camera_name} is not listed in dependencies"
             )
         if isinstance(camera, CameraClient):
-            image = await camera.get_image()
+            image = await camera.get_image(mime_type="image/png")
             pil_image = viam_to_pil_image(image)
             pil_image, detections = analyze_image(self, pil_image)
             viam_image = pil_to_viam_image(pil_image, image.mime_type)
@@ -271,7 +271,7 @@ class Sealant(Vision, EasyResource):
                 f"Requested camera {camera_name} is not listed in dependencies"
             )
         if isinstance(camera, CameraClient):
-            image = await camera.get_image()
+            image = await camera.get_image(mime_type="image/png")
             detections = await self.get_detections(image)
         else:
             raise ViamError(
