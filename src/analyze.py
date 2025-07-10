@@ -16,12 +16,15 @@ def analyze_image(self: Sealant, image: Image) -> Tuple[Image.Image, List[Detect
     detections: List[Detection] = []
     np_image = pil_to_opencv(image)
     thresh_image = threshold_image(np_image, self.thresh_offset)
-    if self.bw_image:
-        np_image = cv2.cvtColor(thresh_image, cv2.COLOR_GRAY2RGB)
     filtered_contours = find_contours(self, thresh_image)
     for i, contour in enumerate(filtered_contours):
         area = cv2.contourArea(contour)
         self.logger.debug(f"Contour {i} area: {area}")
+    # TODO: PIL to Viam Image seems not to support grayscale images directly.
+    if len(np_image.shape) == 2 or np_image.shape[2] == 1:
+        np_image = cv2.cvtColor(np_image, cv2.COLOR_GRAY2RGB)
+    if self.bw_image:
+        np_image = cv2.cvtColor(thresh_image, cv2.COLOR_GRAY2RGB)
     if self.draw_contours:
         np_image = cv2.drawContours(np_image, filtered_contours, -1, (0, 255, 0), 1)
     if len(filtered_contours) == 2:
@@ -122,8 +125,15 @@ def find_contours(self: Sealant, image: np.ndarray) -> List:
 
 def threshold_image(image: np.ndarray, cfg_thresh: int) -> np.ndarray:
     # Convert RGB to BGR gray scale (OpenCV uses BGR by default)
-    if image.ndim == 3 and image.shape[2] == 3:
+    # Check if the image is already grayscale (2D array) or needs conversion
+    if image.ndim == 2:
+        gray_image = image
+    elif image.ndim == 3 and image.shape[2] == 3:
         gray_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    else:
+        raise ValueError(
+            "Unsupported image shape for grayscale conversion: {}".format(image.shape)
+        )
     # Blur and then threshold the image to create a binary image (black and white)
     # https://docs.opencv.org/4.x/d7/d4d/tutorial_py_thresholding.html
     blur = cv2.GaussianBlur(gray_image, (5, 5), 0)
