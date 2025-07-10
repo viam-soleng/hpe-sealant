@@ -16,12 +16,18 @@ def analyze_image(self: Sealant, image: Image) -> Tuple[Image.Image, List[Detect
     detections: List[Detection] = []
     np_image = pil_to_opencv(image)
     thresh_image = threshold_image(np_image, self.thresh_offset)
-    if self.bw_image:
-        np_image = cv2.cvtColor(thresh_image, cv2.COLOR_GRAY2RGB)
     filtered_contours = find_contours(self, thresh_image)
+    self.logger.debug(
+        f"contour shapes: {filtered_contours[0].shape} {filtered_contours[1].shape}"
+    )
     for i, contour in enumerate(filtered_contours):
         area = cv2.contourArea(contour)
         self.logger.debug(f"Contour {i} area: {area}")
+    # TODO: PIL to Viam Image seems not to support grayscale images directly.
+    if len(np_image.shape) == 2 or np_image.shape[2] == 1:
+        np_image = cv2.cvtColor(np_image, cv2.COLOR_GRAY2RGB)
+    if self.bw_image:
+        np_image = cv2.cvtColor(thresh_image, cv2.COLOR_GRAY2RGB)
     if self.draw_contours:
         np_image = cv2.drawContours(np_image, filtered_contours, -1, (0, 255, 0), 1)
     if len(filtered_contours) == 2:
@@ -49,9 +55,7 @@ def analyze_image(self: Sealant, image: Image) -> Tuple[Image.Image, List[Detect
         detections.append(distance_to_detection(p_max_1, p_max_2, max_distance))
     else:
         self.logger.warning(
-            "Expected exactly two contours for sealant width analysis, found: {}".format(
-                len(filtered_contours)
-            )
+            f"Expected exactly two contours for sealant width analysis, found: {len(filtered_contours)}"
         )
     return opencv_to_pil(np_image), detections
 
@@ -78,10 +82,10 @@ def check_sealant_width(image: np.ndarray, c1: np.ndarray, c2: np.ndarray):
     return (
         chosen_min_point_c1,
         chosen_min_point_c2,
-        min_dist,
+        np.sqrt(min_dist),
         chosen_max_point_c1,
         chosen_max_point_c2,
-        max_dist,
+        np.sqrt(max_dist),
     )
 
 
@@ -89,7 +93,7 @@ def closest_point(point, array):
     diff = array - point
     distances = np.einsum("ij,ij->i", diff, diff)
     idx = np.argmin(distances)
-    return idx, np.sqrt(distances[idx])
+    return idx, distances[idx]
 
 
 def check_contour_anomalies(self: Self, filtered_contours: List) -> List:
@@ -105,7 +109,7 @@ def check_contour_anomalies(self: Self, filtered_contours: List) -> List:
 
 
 def find_contours(self: Sealant, image: np.ndarray) -> List:
-    contours, _ = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
     # Filter contours based on the configuration
     filtered_contours = filter_contours_by_size(
         contours,
@@ -122,8 +126,15 @@ def find_contours(self: Sealant, image: np.ndarray) -> List:
 
 def threshold_image(image: np.ndarray, cfg_thresh: int) -> np.ndarray:
     # Convert RGB to BGR gray scale (OpenCV uses BGR by default)
-    if image.ndim == 3 and image.shape[2] == 3:
+    # Check if the image is already grayscale (2D array) or needs conversion
+    if image.ndim == 2:
+        gray_image = image
+    elif image.ndim == 3 and image.shape[2] == 3:
         gray_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    else:
+        raise ValueError(
+            "Unsupported image shape for grayscale conversion: {}".format(image.shape)
+        )
     # Blur and then threshold the image to create a binary image (black and white)
     # https://docs.opencv.org/4.x/d7/d4d/tutorial_py_thresholding.html
     blur = cv2.GaussianBlur(gray_image, (5, 5), 0)
